@@ -8,66 +8,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
   <title>My 3D World / Spatial Room</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
-
-    :root {
-      --ink: #edf7f3;
-      --muted: #91aaa5;
-      --cyan: #70f3d1;
-      --coral: #ff866f;
-      --panel: rgba(8, 16, 23, .78);
-      --line: rgba(112, 243, 209, .28);
-    }
-
-    * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #081017; color: var(--ink); }
-    body { font-family: 'Space Grotesk', sans-serif; }
-    button, input { font: inherit; }
-
-    #camera { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); background: radial-gradient(circle at 70% 15%, #27464a, #081017 70%); z-index: 0; }
-    #shade { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgba(3, 11, 16, .68), transparent 28%, rgba(3, 11, 16, .15) 60%, rgba(3, 11, 16, .85)); }
-    #space { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
-
-    .hud { position: fixed; z-index: 4; top: max(22px, env(safe-area-inset-top)); left: max(22px, env(safe-area-inset-left)); right: max(22px, env(safe-area-inset-right)); display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
-    .brand, .status { text-shadow: 0 2px 15px #000; }
-    .brand { letter-spacing: .12em; font-size: 12px; font-weight: 600; }
-    .brand span { color: var(--cyan); }
-    .status { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .08em; text-align: right; }
-    .status strong { color: var(--cyan); font-weight: 400; }
-
-    .menu-node { position: fixed; z-index: 5; left: 50%; top: 51%; transform: translate(-50%, -50%); display: grid; gap: 12px; justify-items: center; transition: left .12s linear, top .12s linear; }
-    .menu-button { position: relative; width: 78px; height: 78px; border: 1px solid var(--cyan); border-radius: 50%; color: var(--ink); background: rgba(8, 25, 29, .72); box-shadow: 0 0 0 8px rgba(112, 243, 209, .08), 0 0 32px rgba(112, 243, 209, .28); cursor: pointer; transition: transform .2s, background .2s; }
-    .menu-button:hover, .menu-button:focus-visible { transform: scale(1.06); background: rgba(112, 243, 209, .18); outline: none; }
-    .menu-button::before, .menu-button::after { content: ''; position: absolute; left: 24px; right: 24px; height: 1px; background: var(--cyan); box-shadow: 0 10px var(--cyan), 0 -10px var(--cyan); }
-    .menu-button::before { top: 50%; }
-    .node-label { color: var(--cyan); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 2px 10px #000; }
-
-    .panel { position: fixed; z-index: 6; left: 50%; top: 50%; width: min(430px, calc(100% - 36px)); transform: translate(-50%, 62px) scale(.96); padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); backdrop-filter: blur(18px); box-shadow: 0 18px 60px rgba(0, 0, 0, .35); opacity: 0; pointer-events: none; transition: transform .35s cubic-bezier(.2, .9, .3, 1), opacity .25s ease; }
-    .panel.open { transform: translate(-50%, 62px) scale(1); opacity: 1; pointer-events: auto; }
-    .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
-    .panel-title { font-size: 14px; font-weight: 600; }
-    .panel-meta { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; }
-    .close { border: 0; color: var(--muted); background: none; cursor: pointer; font-size: 22px; line-height: 1; }
-    .entry { display: flex; gap: 8px; }
-    .entry input { min-width: 0; flex: 1; padding: 13px 14px; border: 1px solid rgba(237, 247, 243, .2); border-radius: 8px; color: var(--ink); background: rgba(255, 255, 255, .08); outline: none; }
-    .entry input:focus { border-color: var(--cyan); }
-    .entry button, #start { border: 0; border-radius: 8px; padding: 0 16px; color: #061512; background: var(--cyan); font-weight: 700; cursor: pointer; }
-    .saved { min-height: 16px; margin-top: 10px; color: var(--cyan); font-family: 'DM Mono', monospace; font-size: 10px; }
-
-    #start-screen { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 26px; background: #081017; transition: opacity .35s, visibility .35s; }
-    #start-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-    .intro { width: min(390px, 100%); }
-    .eyebrow { color: var(--cyan); font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .15em; }
-    h1 { max-width: 340px; margin: 14px 0 12px; font-size: clamp(42px, 13vw, 72px); line-height: .92; letter-spacing: -.05em; }
-    .intro p { max-width: 330px; color: var(--muted); line-height: 1.6; }
-    #start { margin-top: 14px; min-height: 48px; }
-    .permission-note { margin-top: 15px; color: #607772; font-family: 'DM Mono', monospace; font-size: 10px; line-height: 1.5; }
-
-    @media (orientation: portrait) and (min-width: 500px) { .menu-node { top: 48%; } }
-    @media (orientation: landscape) { .menu-node { left: 58%; top: 52%; } }
-  </style>
 </head>
 <body>
   <video id="camera" autoplay playsinline muted aria-label="Front camera view"></video>
@@ -83,136 +25,12 @@
     <button class="menu-button" id="menu-button" aria-label="Open spatial menu"></button>
   </main>
 
-  <section class="panel" id="panel" aria-label="Spatial menu editor">
+  <section class="panel" id="panel" aria-label="Menu editor">
     <div class="panel-head"><div><div class="panel-title">Place a note</div><div class="panel-meta">ANCHORED TO FIRST HEADING</div></div><button class="close" id="close" aria-label="Close menu">&times;</button></div>
     <form class="entry" id="entry"><input id="note" type="text" maxlength="80" placeholder="Type something here..." autocomplete="off"><button type="submit">Add</button></form>
     <div class="saved" id="saved" aria-live="polite"></div>
   </section>
 
-  <script type="module">
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js';
-
-    const video = document.querySelector('#camera');
-    const sensorStatus = document.querySelector('#sensor-status');
-    const orientationLabel = document.querySelector('#orientation');
-    const panel = document.querySelector('#panel');
-    const note = document.querySelector('#note');
-    const saved = document.querySelector('#saved');
-    let scene, camera, renderer, roomAnchor, initialSensorQuaternion = null, hasOrientation = false;
-    const menuNode = document.querySelector('.menu-node');
-    const menuPanel = document.querySelector('#panel');
-    const menuWorldPosition = new THREE.Vector3(0, 0, -4.5);
-    const sensorEuler = new THREE.Euler();
-    const sensorQuaternion = new THREE.Quaternion();
-    const screenQuaternion = new THREE.Quaternion();
-    const zee = new THREE.Vector3(0, 0, 1);
-    const q0 = new THREE.Quaternion(-Math.sqrt(.5), 0, 0, Math.sqrt(.5));
-
-    function setupSpace() {
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, .1, 100);
-      camera.position.set(0, 0, 0);
-      camera.userData.targetQuaternion = new THREE.Quaternion();
-      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-      renderer.setSize(innerWidth, innerHeight);
-      document.querySelector('#space').appendChild(renderer.domElement);
-      const floor = new THREE.GridHelper(12, 12, 0x70f3d1, 0x70f3d1);
-      floor.material.transparent = true;
-      floor.material.opacity = .12;
-      floor.position.y = -2;
-      scene.add(floor);
-      const ceiling = floor.clone();
-      ceiling.position.y = 4;
-      ceiling.material = floor.material.clone();
-      ceiling.material.opacity = .045;
-      scene.add(ceiling);
-      const wallGrid = new THREE.GridHelper(12, 12, 0x70f3d1, 0x70f3d1);
-      wallGrid.material.transparent = true;
-      wallGrid.material.opacity = .08;
-      wallGrid.rotation.x = Math.PI / 2;
-      wallGrid.position.set(-6, 1, 0);
-      scene.add(wallGrid);
-      const rightWall = wallGrid.clone();
-      rightWall.position.x = 6;
-      scene.add(rightWall);
-      const backWall = wallGrid.clone();
-      backWall.rotation.set(0, 0, 0);
-      backWall.position.set(0, 1, -6);
-      scene.add(backWall);
-      const roomFrame = new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-6, -2, -6), new THREE.Vector3(6, 4, 6)), 0x70f3d1);
-      roomFrame.material.transparent = true;
-      roomFrame.material.opacity = .35;
-      scene.add(roomFrame);
-      const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.11, 48), new THREE.MeshBasicMaterial({ color: 0x70f3d1, transparent: true, opacity: .5 }));
-      ring.position.set(0, 0, -4.45);
-      scene.add(ring);
-      roomAnchor = new THREE.Object3D();
-      roomAnchor.position.copy(menuWorldPosition);
-      scene.add(roomAnchor);
-      animate();
-    }
-
-    function animate() {
-      requestAnimationFrame(animate);
-      if (roomAnchor) {
-        camera.quaternion.slerp(camera.userData.targetQuaternion, .1);
-        camera.updateMatrixWorld();
-        const projected = roomAnchor.position.clone().project(camera);
-        const visible = !hasOrientation || (projected.z > -1 && projected.z < 1 && Math.abs(projected.x) < 1.15 && Math.abs(projected.y) < 1.15);
-        menuNode.style.display = visible ? 'grid' : 'none';
-        menuPanel.style.visibility = visible ? 'visible' : 'hidden';
-        if (visible) {
-          menuNode.style.left = `${(projected.x * .5 + .5) * innerWidth}px`;
-          menuNode.style.top = `${(-projected.y * .5 + .5) * innerHeight}px`;
-          menuPanel.style.left = `${(projected.x * .5 + .5) * innerWidth}px`;
-          menuPanel.style.top = `${(-projected.y * .5 + .5) * innerHeight}px`;
-        }
-      }
-      renderer.render(scene, camera);
-    }
-
-    async function enter() {
-      try {
-        video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-      } catch (error) {
-        saved.textContent = 'Camera unavailable - spatial mode still active.';
-      }
-      if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => {});
-      if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
-        try { await DeviceOrientationEvent.requestPermission(); } catch (error) { /* permission can be granted later */ }
-      }
-      window.addEventListener('deviceorientation', trackTilt, true);
-      sensorStatus.textContent = 'SENSOR READY';
-    }
-
-    function trackTilt(event) {
-      hasOrientation = true;
-      sensorEuler.set(
-        THREE.MathUtils.degToRad(event.beta || 0),
-        THREE.MathUtils.degToRad(event.alpha || 0),
-        THREE.MathUtils.degToRad(-(event.gamma || 0)),
-        'YXZ'
-      );
-      sensorQuaternion.setFromEuler(sensorEuler);
-      sensorQuaternion.multiply(q0);
-      sensorQuaternion.multiply(q0.clone().setFromAxisAngle(zee, -THREE.MathUtils.degToRad(screen.orientation?.angle || 0)));
-      if (!initialSensorQuaternion) {
-        initialSensorQuaternion = sensorQuaternion.clone();
-        sensorStatus.textContent = 'ZERO LOCKED';
-      }
-      const relativeQuaternion = initialSensorQuaternion.clone().invert().multiply(sensorQuaternion);
-      camera.userData.targetQuaternion.copy(relativeQuaternion);
-      orientationLabel.textContent = `${innerWidth > innerHeight ? 'LANDSCAPE' : 'PORTRAIT'} / ZERO ${Math.round(event.alpha || 0)}°`;
-    }
-
-    document.querySelector('#menu-button').addEventListener('click', () => { panel.classList.add('open'); setTimeout(() => note.focus(), 250); });
-    document.querySelector('#close').addEventListener('click', () => panel.classList.remove('open'));
-    document.querySelector('#entry').addEventListener('submit', (event) => { event.preventDefault(); if (!note.value.trim()) return; saved.textContent = `NOTE PLACED: “${note.value.trim()}”`; note.value = ''; });
-    addEventListener('resize', () => { if (camera) { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); } });
-    setupSpace();
-    enter();
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
-  </script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
