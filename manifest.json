@@ -1,0 +1,18 @@
+{
+  "name": "My 3D World",
+  "short_name": "3D World",
+  "description": "A personal 3D room controlled by your phone.",
+  "start_url": ".",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#081017",
+  "theme_color": "#081017",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
