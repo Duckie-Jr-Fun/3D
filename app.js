@@ -9,11 +9,63 @@ const saved = document.querySelector('#saved');
 let scene, camera, renderer, roomAnchor, initialSensorQuaternion = null, hasOrientation = false;
 const menuNode = document.querySelector('.menu-node');
 const menuPanel = document.querySelector('#panel');
-const menuWorldPosition = new THREE.Vector3(0, 0, -4.5);
+const menuWorldPosition = new THREE.Vector3(0, 0, -2.6);
 const sensorEuler = new THREE.Euler();
 const sensorQuaternion = new THREE.Quaternion();
 const zee = new THREE.Vector3(0, 0, 1);
 const q0 = new THREE.Quaternion(-Math.sqrt(.5), 0, 0, Math.sqrt(.5));
+
+function addBeam(start, end, radius = .035, color = 0x70f3d1, opacity = .75) {
+  const direction = new THREE.Vector3().subVectors(end, start);
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, direction.length(), 8),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity })
+  );
+  beam.position.copy(start).add(end).multiplyScalar(.5);
+  beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  scene.add(beam);
+}
+
+function addRoomStructure() {
+  const min = new THREE.Vector3(-4, -1.5, -4);
+  const max = new THREE.Vector3(4, 3, 4);
+  const corners = [
+    new THREE.Vector3(min.x, min.y, min.z), new THREE.Vector3(max.x, min.y, min.z),
+    new THREE.Vector3(max.x, min.y, max.z), new THREE.Vector3(min.x, min.y, max.z),
+    new THREE.Vector3(min.x, max.y, min.z), new THREE.Vector3(max.x, max.y, min.z),
+    new THREE.Vector3(max.x, max.y, max.z), new THREE.Vector3(min.x, max.y, max.z)
+  ];
+  [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]
+    .forEach(([start, end]) => addBeam(corners[start], corners[end], .055, 0x70f3d1, .9));
+
+  const major = [
+    [new THREE.Vector3(-2, -1.48, -4), new THREE.Vector3(-2, -1.48, 4)],
+    [new THREE.Vector3(2, -1.48, -4), new THREE.Vector3(2, -1.48, 4)],
+    [new THREE.Vector3(-4, -1.48, -2), new THREE.Vector3(4, -1.48, -2)],
+    [new THREE.Vector3(-4, -1.48, 2), new THREE.Vector3(4, -1.48, 2)],
+    [new THREE.Vector3(-4, .75, -2), new THREE.Vector3(4, .75, -2)],
+    [new THREE.Vector3(-4, 2, -2), new THREE.Vector3(4, 2, -2)]
+  ];
+  major.forEach(([start, end]) => addBeam(start, end, .025, 0x70f3d1, .5));
+}
+
+function addWallGrid(width, height, position, rotation) {
+  const points = [];
+  const divisions = 8;
+  for (let index = 0; index <= divisions; index += 1) {
+    const x = -width / 2 + (width * index) / divisions;
+    const y = -height / 2 + (height * index) / divisions;
+    points.push(-width / 2, y, 0, width / 2, y, 0);
+    points.push(x, -height / 2, 0, x, height / 2, 0);
+  }
+  const grid = new THREE.LineSegments(
+    new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(points, 3)),
+    new THREE.LineBasicMaterial({ color: 0x70f3d1, transparent: true, opacity: .08 })
+  );
+  grid.position.copy(position);
+  grid.rotation.set(rotation.x, rotation.y, rotation.z);
+  scene.add(grid);
+}
 
 function setupSpace() {
   scene = new THREE.Scene();
@@ -24,35 +76,31 @@ function setupSpace() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
   document.querySelector('#space').appendChild(renderer.domElement);
-  const floor = new THREE.GridHelper(12, 12, 0x70f3d1, 0x70f3d1);
+  const floor = new THREE.GridHelper(8, 8, 0x70f3d1, 0x70f3d1);
   floor.material.transparent = true;
   floor.material.opacity = .12;
-  floor.position.y = -2;
+  floor.position.y = -1.5;
   scene.add(floor);
   const ceiling = floor.clone();
-  ceiling.position.y = 4;
+  ceiling.position.y = 3;
   ceiling.material = floor.material.clone();
   ceiling.material.opacity = .045;
   scene.add(ceiling);
-  const wallGrid = new THREE.GridHelper(12, 12, 0x70f3d1, 0x70f3d1);
-  wallGrid.material.transparent = true;
-  wallGrid.material.opacity = .08;
-  wallGrid.rotation.x = Math.PI / 2;
-  wallGrid.position.set(-6, 1, 0);
-  scene.add(wallGrid);
-  const rightWall = wallGrid.clone();
-  rightWall.position.x = 6;
-  scene.add(rightWall);
-  const backWall = wallGrid.clone();
-  backWall.rotation.set(0, 0, 0);
-  backWall.position.set(0, 1, -6);
-  scene.add(backWall);
-  const roomFrame = new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-6, -2, -6), new THREE.Vector3(6, 4, 6)), 0x70f3d1);
-  roomFrame.material.transparent = true;
-  roomFrame.material.opacity = .35;
+  addWallGrid(8, 4.5, new THREE.Vector3(-4, .75, 0), new THREE.Euler(0, Math.PI / 2, 0));
+  addWallGrid(8, 4.5, new THREE.Vector3(4, .75, 0), new THREE.Euler(0, Math.PI / 2, 0));
+  addWallGrid(8, 4.5, new THREE.Vector3(0, .75, -4), new THREE.Euler(0, 0, 0));
+  const roomFrame = new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-4, -1.5, -4), new THREE.Vector3(4, 3, 4)), 0x70f3d1);
+  roomFrame.visible = false;
   scene.add(roomFrame);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.11, 48), new THREE.MeshBasicMaterial({ color: 0x70f3d1, transparent: true, opacity: .5 }));
-  ring.position.set(0, 0, -4.45);
+  addRoomStructure();
+  const menuBackdrop = new THREE.Mesh(
+    new THREE.CircleGeometry(.709, 48),
+    new THREE.MeshBasicMaterial({ color: 0x081017, transparent: true, opacity: .9 })
+  );
+  menuBackdrop.position.set(0, 0, -2.6);
+  scene.add(menuBackdrop);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.743, .776, 48), new THREE.MeshBasicMaterial({ color: 0x70f3d1, transparent: true, opacity: .75 }));
+  ring.position.set(0, 0, -2.56);
   scene.add(ring);
   roomAnchor = new THREE.Object3D();
   roomAnchor.position.copy(menuWorldPosition);
@@ -119,4 +167,4 @@ document.querySelector('#entry').addEventListener('submit', (event) => { event.p
 addEventListener('resize', () => { if (camera) { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); } });
 setupSpace();
 enter();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=3').catch(() => {});
