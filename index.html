@@ -102,6 +102,11 @@
     let scene, camera, renderer, roomAnchor, initialSensorQuaternion = null, hasOrientation = false;
     const menuNode = document.querySelector('.menu-node');
     const menuWorldPosition = new THREE.Vector3(0, 0, -4.5);
+    const sensorEuler = new THREE.Euler();
+    const sensorQuaternion = new THREE.Quaternion();
+    const screenQuaternion = new THREE.Quaternion();
+    const zee = new THREE.Vector3(0, 0, 1);
+    const q0 = new THREE.Quaternion(-Math.sqrt(.5), 0, 0, Math.sqrt(.5));
 
     function setupSpace() {
       scene = new THREE.Scene();
@@ -152,6 +157,7 @@
       requestAnimationFrame(animate);
       if (roomAnchor) {
         camera.quaternion.slerp(camera.userData.targetQuaternion, .1);
+        camera.updateMatrixWorld();
         const projected = roomAnchor.position.clone().project(camera);
         const visible = !hasOrientation || (projected.z > -1 && projected.z < 1 && Math.abs(projected.x) < 1.15 && Math.abs(projected.y) < 1.15);
         menuNode.style.display = visible ? 'grid' : 'none';
@@ -174,26 +180,27 @@
         try { await DeviceOrientationEvent.requestPermission(); } catch (error) { /* permission can be granted later */ }
       }
       window.addEventListener('deviceorientation', trackTilt, true);
-      sensorStatus.textContent = 'SENSORS ONLINE';
+      sensorStatus.textContent = 'SENSOR READY';
     }
 
     function trackTilt(event) {
       hasOrientation = true;
-      const sensorEuler = new THREE.Euler(
+      sensorEuler.set(
         THREE.MathUtils.degToRad(event.beta || 0),
         THREE.MathUtils.degToRad(event.alpha || 0),
         THREE.MathUtils.degToRad(-(event.gamma || 0)),
         'YXZ'
       );
-      const sensorQuaternion = new THREE.Quaternion().setFromEuler(sensorEuler);
-      if (!initialSensorQuaternion) initialSensorQuaternion = sensorQuaternion.clone();
+      sensorQuaternion.setFromEuler(sensorEuler);
+      sensorQuaternion.multiply(q0);
+      sensorQuaternion.multiply(q0.clone().setFromAxisAngle(zee, -THREE.MathUtils.degToRad(screen.orientation?.angle || 0)));
+      if (!initialSensorQuaternion) {
+        initialSensorQuaternion = sensorQuaternion.clone();
+        sensorStatus.textContent = 'ZERO LOCKED';
+      }
       const relativeQuaternion = initialSensorQuaternion.clone().invert().multiply(sensorQuaternion);
-      const screenQuaternion = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 0, 1),
-        -THREE.MathUtils.degToRad(screen.orientation?.angle || 0)
-      );
-      camera.userData.targetQuaternion.copy(screenQuaternion.multiply(relativeQuaternion));
-      orientationLabel.textContent = `${innerWidth > innerHeight ? 'LANDSCAPE' : 'PORTRAIT'} / ${Math.round(event.alpha || 0)}° HEADING`;
+      camera.userData.targetQuaternion.copy(relativeQuaternion);
+      orientationLabel.textContent = `${innerWidth > innerHeight ? 'LANDSCAPE' : 'PORTRAIT'} / ZERO ${Math.round(event.alpha || 0)}°`;
     }
 
     document.querySelector('#menu-button').addEventListener('click', () => { panel.classList.add('open'); setTimeout(() => note.focus(), 250); });
