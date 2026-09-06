@@ -44,8 +44,8 @@
     .menu-button::before { top: 50%; }
     .node-label { color: var(--cyan); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 2px 10px #000; }
 
-    .panel { position: fixed; z-index: 6; left: 50%; bottom: max(22px, env(safe-area-inset-bottom)); width: min(430px, calc(100% - 36px)); transform: translate(-50%, 130%); padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); backdrop-filter: blur(18px); box-shadow: 0 18px 60px rgba(0, 0, 0, .35); transition: transform .35s cubic-bezier(.2, .9, .3, 1); }
-    .panel.open { transform: translate(-50%, 0); }
+    .panel { position: fixed; z-index: 6; left: 50%; top: 50%; width: min(430px, calc(100% - 36px)); transform: translate(-50%, 62px) scale(.96); padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); backdrop-filter: blur(18px); box-shadow: 0 18px 60px rgba(0, 0, 0, .35); opacity: 0; pointer-events: none; transition: transform .35s cubic-bezier(.2, .9, .3, 1), opacity .25s ease; }
+    .panel.open { transform: translate(-50%, 62px) scale(1); opacity: 1; pointer-events: auto; }
     .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
     .panel-title { font-size: 14px; font-weight: 600; }
     .panel-meta { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; }
@@ -75,13 +75,12 @@
   <div id="space" aria-hidden="true"></div>
 
   <div class="hud">
-    <div class="brand">3D WORLD <span>/</span> 01</div>
+    <div class="brand">3D WORLD</div>
     <div class="status"><strong id="sensor-status">SENSOR STANDBY</strong><br><span id="orientation">PORTRAIT / TURN PHONE</span></div>
   </div>
 
   <main class="menu-node">
     <button class="menu-button" id="menu-button" aria-label="Open spatial menu"></button>
-    <div class="node-label">Spatial menu</div>
   </main>
 
   <section class="panel" id="panel" aria-label="Spatial menu editor">
@@ -101,6 +100,7 @@
     const saved = document.querySelector('#saved');
     let scene, camera, renderer, roomAnchor, initialSensorQuaternion = null, hasOrientation = false;
     const menuNode = document.querySelector('.menu-node');
+    const menuPanel = document.querySelector('#panel');
     const menuWorldPosition = new THREE.Vector3(0, 0, -4.5);
     const sensorEuler = new THREE.Euler();
     const sensorQuaternion = new THREE.Quaternion();
@@ -161,9 +161,12 @@
         const projected = roomAnchor.position.clone().project(camera);
         const visible = !hasOrientation || (projected.z > -1 && projected.z < 1 && Math.abs(projected.x) < 1.15 && Math.abs(projected.y) < 1.15);
         menuNode.style.display = visible ? 'grid' : 'none';
+        menuPanel.style.visibility = visible ? 'visible' : 'hidden';
         if (visible) {
           menuNode.style.left = `${(projected.x * .5 + .5) * innerWidth}px`;
           menuNode.style.top = `${(-projected.y * .5 + .5) * innerHeight}px`;
+          menuPanel.style.left = `${(projected.x * .5 + .5) * innerWidth}px`;
+          menuPanel.style.top = `${(-projected.y * .5 + .5) * innerHeight}px`;
         }
       }
       renderer.render(scene, camera);
