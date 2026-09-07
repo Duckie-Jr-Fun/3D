@@ -18,11 +18,11 @@ const youtubeFrame = document.querySelector('#youtube-frame');
 const wallChoices = document.querySelector('#wall-choices');
 const videoWallTitle = document.querySelector('#video-wall-title');
 let pendingVideoId = null;
-let videoWallPosition = new THREE.Vector3(0, .75, -3.85);
-const wallPositions = {
-  back: new THREE.Vector3(0, .75, -3.85),
-  left: new THREE.Vector3(-3.85, .75, 0),
-  right: new THREE.Vector3(3.85, .75, 0)
+let activeVideoWall = 'back';
+const wallSurfaces = {
+  back: { center: new THREE.Vector3(0, .75, -3.85), horizontal: new THREE.Vector3(3.35, 0, 0), vertical: new THREE.Vector3(0, 1.65, 0) },
+  left: { center: new THREE.Vector3(-3.85, .75, 0), horizontal: new THREE.Vector3(0, 0, 3.35), vertical: new THREE.Vector3(0, 1.65, 0) },
+  right: { center: new THREE.Vector3(3.85, .75, 0), horizontal: new THREE.Vector3(0, 0, -3.35), vertical: new THREE.Vector3(0, 1.65, 0) }
 };
 const menuWorldPosition = new THREE.Vector3(0, 0, -2.6);
 const mainPanelWorldPosition = new THREE.Vector3(1.7, 0, -2.6);
@@ -31,6 +31,33 @@ const sensorEuler = new THREE.Euler();
 const sensorQuaternion = new THREE.Quaternion();
 const zee = new THREE.Vector3(0, 0, 1);
 const q0 = new THREE.Quaternion(-Math.sqrt(.5), 0, 0, Math.sqrt(.5));
+
+function projectToPixels(point) {
+  const projected = point.clone().project(camera);
+  return new THREE.Vector2(
+    (projected.x * .5 + .5) * innerWidth,
+    (-projected.y * .5 + .5) * innerHeight
+  );
+}
+
+function updateVideoWallProjection() {
+  const surface = wallSurfaces[activeVideoWall];
+  const center = projectToPixels(surface.center);
+  const horizontalPoint = projectToPixels(surface.center.clone().add(surface.horizontal));
+  const verticalPoint = projectToPixels(surface.center.clone().add(surface.vertical));
+  const horizontalVector = horizontalPoint.clone().sub(center);
+  const verticalVector = verticalPoint.clone().sub(center);
+  const width = Math.max(120, horizontalVector.length() * 2);
+  const height = Math.max(80, verticalVector.length() * 2);
+  const angle = Math.atan2(horizontalVector.y, horizontalVector.x);
+  videoWall.style.left = `${center.x}px`;
+  videoWall.style.top = `${center.y}px`;
+  videoWall.style.width = `${width}px`;
+  videoWall.style.height = `${height}px`;
+  videoWall.style.transform = `translate(-50%, -50%) rotate(${angle}rad)`;
+  const centerDepth = surface.center.clone().project(camera).z;
+  videoWall.style.visibility = centerDepth > -1 && centerDepth < 1 ? 'visible' : 'hidden';
+}
 
 function addBeam(start, end, radius = .035, color = 0x70f3d1, opacity = .75) {
   const direction = new THREE.Vector3().subVectors(end, start);
@@ -139,13 +166,8 @@ function animate() {
       menuPanel.style.top = `${(-mainPanelProjected.y * .5 + .5) * innerHeight}px`;
       nestedPanel.style.left = `${(nestedPanelProjected.x * .5 + .5) * innerWidth}px`;
       nestedPanel.style.top = `${(-nestedPanelProjected.y * .5 + .5) * innerHeight}px`;
-      if (!videoWall.hidden) {
-        const videoWallProjected = videoWallPosition.clone().project(camera);
-        videoWall.style.left = `${(videoWallProjected.x * .5 + .5) * innerWidth}px`;
-        videoWall.style.top = `${(-videoWallProjected.y * .5 + .5) * innerHeight}px`;
-        videoWall.style.visibility = videoWallProjected.z > -1 && videoWallProjected.z < 1 ? 'visible' : 'hidden';
-      }
     }
+    if (!videoWall.hidden) updateVideoWallProjection();
   }
   renderer.render(scene, camera);
 }
@@ -266,7 +288,7 @@ wallChoices.querySelectorAll('[data-wall]').forEach(button => {
   button.addEventListener('click', () => {
     if (!pendingVideoId) return;
     const wall = button.dataset.wall;
-    videoWallPosition = wallPositions[wall];
+    activeVideoWall = wall;
     youtubeFrame.src = `https://www.youtube.com/embed/${pendingVideoId}?autoplay=1&rel=0`;
     videoWallTitle.textContent = `YouTube / ${wall} wall`;
     videoWall.hidden = false;
@@ -281,4 +303,4 @@ document.querySelector('#video-wall-close').addEventListener('click', () => {
 addEventListener('resize', () => { if (camera) { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); } });
 setupSpace();
 enter();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=9').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=10').catch(() => {});
