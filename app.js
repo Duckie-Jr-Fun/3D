@@ -17,8 +17,15 @@ const videoWall = document.querySelector('#video-wall');
 const youtubeFrame = document.querySelector('#youtube-frame');
 const wallChoices = document.querySelector('#wall-choices');
 const videoWallTitle = document.querySelector('#video-wall-title');
+const cameraPermission = document.querySelector('#camera-permission');
+const gazeCursor = document.querySelector('#gaze-cursor');
+const resetZeroButton = document.querySelector('#reset-zero-button');
 let pendingVideoId = null;
 let activeVideoWall = 'back';
+let resetZeroMode = false;
+let dwellTarget = null;
+let dwellTimer = null;
+const dwellDuration = 1400;
 const wallSurfaces = {
   back: { center: new THREE.Vector3(0, .75, -3.85), horizontal: new THREE.Vector3(3.35, 0, 0), vertical: new THREE.Vector3(0, 1.65, 0) },
   left: { center: new THREE.Vector3(-3.85, .75, 0), horizontal: new THREE.Vector3(0, 0, 3.35), vertical: new THREE.Vector3(0, 1.65, 0) },
@@ -63,6 +70,24 @@ function updateVideoWallProjection() {
   videoWall.style.clipPath = `polygon(${clip})`;
   const centerDepth = surface.center.clone().project(camera).z;
   videoWall.style.visibility = centerDepth > -1 && centerDepth < 1 ? 'visible' : 'hidden';
+}
+
+function updateGazeTarget() {
+  const target = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+  const actionable = target?.closest('button, input, [data-wall]');
+  const nextDwellTarget = actionable && actionable !== cameraPermission && !actionable.disabled && !actionable.closest('#gaze-cursor') ? actionable : null;
+  if (nextDwellTarget === dwellTarget) return;
+  clearTimeout(dwellTimer);
+  gazeCursor.classList.remove('dwell');
+  dwellTarget = nextDwellTarget;
+  if (!dwellTarget) return;
+  gazeCursor.style.setProperty('--dwell-time', `${dwellDuration}ms`);
+  gazeCursor.classList.add('dwell');
+  dwellTimer = setTimeout(() => {
+    dwellTarget.click();
+    gazeCursor.classList.remove('dwell');
+    dwellTarget = null;
+  }, dwellDuration);
 }
 
 function addBeam(start, end, radius = .035, color = 0x70f3d1, opacity = .75) {
@@ -175,18 +200,21 @@ function animate() {
     }
     if (!videoWall.hidden) updateVideoWallProjection();
   }
+  updateGazeTarget();
   renderer.render(scene, camera);
 }
 
 async function enter() {
   try {
-    video.srcObject = await requestCamera('rear');
+    await startCamera('rear');
+    cameraPermission.hidden = true;
   } catch (error) {
     try {
-      cameraMode = 'front';
-      video.srcObject = await requestCamera('front');
+      await startCamera('front');
+      cameraPermission.hidden = true;
     } catch (fallbackError) {
       feedback.textContent = 'Camera unavailable - spatial mode still active.';
+      cameraPermission.hidden = false;
     }
   }
   if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => {});
@@ -195,6 +223,19 @@ async function enter() {
   }
   window.addEventListener('deviceorientation', trackTilt, true);
   sensorStatus.textContent = 'SENSOR READY';
+}
+
+async function startCamera(mode) {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { exact: mode === 'rear' ? 'environment' : 'user' } },
+    audio: false
+  });
+  video.srcObject?.getTracks().forEach(track => track.stop());
+  video.srcObject = stream;
+  cameraMode = mode;
+  cameraEnabled = true;
+  video.classList.toggle('front-camera', mode === 'front');
+  return stream;
 }
 
 function requestCamera(mode) {
@@ -215,7 +256,7 @@ function trackTilt(event) {
   sensorQuaternion.setFromEuler(sensorEuler);
   sensorQuaternion.multiply(q0);
   sensorQuaternion.multiply(q0.clone().setFromAxisAngle(zee, -THREE.MathUtils.degToRad(screen.orientation?.angle || 0)));
-  if (!initialSensorQuaternion) {
+  if (!initialSensorQuaternion || resetZeroMode) {
     initialSensorQuaternion = sensorQuaternion.clone();
     sensorStatus.textContent = 'ZERO LOCKED';
   }
@@ -262,6 +303,7 @@ document.querySelector('#camera-button').addEventListener('click', async (event)
     cameraEnabled = false;
     video.srcObject?.getTracks().forEach(track => track.stop());
     video.srcObject = null;
+    video.classList.remove('front-camera');
     event.currentTarget.textContent = 'Camera: Off';
     feedback.textContent = 'CAMERA OFF. WORLD LINES STILL ACTIVE.';
     return;
@@ -271,7 +313,7 @@ document.querySelector('#camera-button').addEventListener('click', async (event)
   const stream = video.srcObject;
   stream?.getTracks().forEach(track => track.stop());
   try {
-    video.srcObject = await requestCamera(cameraMode);
+    await startCamera(cameraMode);
     event.currentTarget.textContent = `Camera: On / ${cameraMode === 'rear' ? 'Rear' : 'Front'}`;
     feedback.textContent = `${cameraMode === 'rear' ? 'REAR' : 'FRONT'} CAMERA ACTIVE.`;
   } catch (error) {
@@ -287,8 +329,17 @@ document.querySelector('#lines-button').addEventListener('click', (event) => {
   feedback.textContent = linesEnabled ? 'WORLD LINES ON.' : 'WORLD LINES OFF. MENU MARKINGS REMAIN.';
 });
 document.querySelector('#reset-zero-button').addEventListener('click', () => {
-  initialSensorQuaternion = null;
-  feedback.textContent = 'POINT PHONE FORWARD TO SET A NEW ZERO.';
+  resetZeroMode = !resetZeroMode;
+  if (resetZeroMode) {
+    initialSensorQuaternion = null;
+    resetZeroButton.textContent = 'Reset zero point: On';
+    resetZeroButton.classList.add('active');
+    feedback.textContent = 'ZERO MODE ON. POINT PHONE FORWARD.';
+  } else {
+    resetZeroButton.textContent = 'Reset zero point: Off';
+    resetZeroButton.classList.remove('active');
+    feedback.textContent = 'ZERO MODE OFF.';
+  }
 });
 wallChoices.querySelectorAll('[data-wall]').forEach(button => {
   button.addEventListener('click', () => {
@@ -296,7 +347,7 @@ wallChoices.querySelectorAll('[data-wall]').forEach(button => {
     const wall = button.dataset.wall;
     activeVideoWall = wall;
     youtubeFrame.src = `https://www.youtube.com/embed/${pendingVideoId}?autoplay=1&rel=0`;
-    videoWallTitle.textContent = `YouTube / ${wall} wall`;
+    if (videoWallTitle) videoWallTitle.textContent = `YouTube / ${wall} wall`;
     videoWall.hidden = false;
     document.querySelector('#nested-panel').classList.remove('open');
     feedback.textContent = 'VIDEO PLACED IN YOUR WORLD.';
@@ -309,4 +360,5 @@ document.querySelector('#video-wall-close').addEventListener('click', () => {
 addEventListener('resize', () => { if (camera) { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); } });
 setupSpace();
 enter();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=11').catch(() => {});
+cameraPermission.addEventListener('click', enter);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=13').catch(() => {});

@@ -14,7 +14,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #081017; col
 body { font-family: 'Space Grotesk', sans-serif; }
 button, input { font: inherit; }
 
-#camera { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); background: radial-gradient(circle at 70% 15%, #27464a, #081017 70%); z-index: 0; }
+#camera { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; background: radial-gradient(circle at 70% 15%, #27464a, #081017 70%); z-index: 0; }
+#camera.front-camera { transform: scaleX(-1); }
 #shade { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgba(3, 11, 16, .68), transparent 28%, rgba(3, 11, 16, .15) 60%, rgba(3, 11, 16, .85)); }
 #space { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 
@@ -24,6 +25,7 @@ button, input { font: inherit; }
 .brand span { color: var(--cyan); }
 .status { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .08em; text-align: right; }
 .status strong { color: var(--cyan); font-weight: 400; }
+.camera-permission { margin-top: 6px; padding: 4px 7px; border: 1px solid var(--cyan); border-radius: 5px; color: var(--cyan); background: rgba(8, 16, 23, .7); font-family: 'DM Mono', monospace; font-size: 9px; cursor: pointer; }
 
 .menu-node { position: fixed; z-index: 5; left: 50%; top: 51%; transform: translate(-50%, -50%); display: grid; gap: 12px; justify-items: center; transition: left .12s linear, top .12s linear; }
 .menu-button { position: relative; width: 78px; height: 78px; border: 1px solid var(--cyan); border-radius: 50%; color: var(--ink); background: rgba(8, 25, 29, .72); box-shadow: 0 0 0 8px rgba(112, 243, 209, .08), 0 0 32px rgba(112, 243, 209, .28); cursor: pointer; transition: transform .2s, background .2s; }
@@ -46,16 +48,20 @@ button, input { font: inherit; }
 .nested-panel > .menu-action { display: block; width: 100%; margin-top: 8px; }
 .wall-choices { margin-top: 14px; }
 .wall-choices .menu-action { display: block; width: 100%; margin-top: 8px; }
-.video-wall { position: fixed; z-index: 8; left: 50%; top: 50%; width: min(720px, 72vw); aspect-ratio: 16 / 9; transform: none; transform-origin: top left; overflow: hidden; background: #05090c; box-shadow: 0 0 0 3px rgba(112, 243, 209, .75), 0 18px 70px rgba(0, 0, 0, .55); transition: left .12s linear, top .12s linear, width .12s linear, height .12s linear, clip-path .12s linear; }
-.video-wall-head { position: absolute; z-index: 1; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 8px 10px 8px 14px; color: var(--cyan); background: rgba(8, 16, 23, .86); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
-.video-wall-head button { border: 0; color: var(--ink); background: none; cursor: pointer; font-size: 22px; line-height: 1; }
-.video-wall iframe { width: 100%; height: 100%; border: 0; }
+.video-wall { position: fixed; z-index: 8; left: 50%; top: 50%; width: min(720px, 72vw); aspect-ratio: 16 / 9; transform: translate(-50%, -50%); transform-origin: center; overflow: hidden; background: #05090c; box-shadow: 0 18px 70px rgba(0, 0, 0, .55); transition: left .18s ease-out, top .18s ease-out, width .18s ease-out, height .18s ease-out; }
+.video-wall iframe { display: block; width: 100%; height: 100%; border: 0; }
+.video-close { position: fixed; z-index: 9; width: 38px; height: 38px; border: 2px solid var(--cyan); border-radius: 50%; color: var(--ink); background: rgba(8, 16, 23, .92); box-shadow: 0 0 0 5px rgba(112, 243, 209, .12); cursor: pointer; font-size: 24px; line-height: 1; transform: translate(-50%, -50%); transition: left .18s ease-out, top .18s ease-out; }
 .close { border: 0; color: var(--muted); background: none; cursor: pointer; font-size: 22px; line-height: 1; }
 .entry { display: flex; gap: 8px; }
 .entry input { min-width: 0; flex: 1; padding: 13px 14px; border: 1px solid rgba(237, 247, 243, .2); border-radius: 8px; color: var(--ink); background: rgba(255, 255, 255, .08); outline: none; }
 .entry input:focus { border-color: var(--cyan); }
 .entry button, #start { border: 0; border-radius: 8px; padding: 0 16px; color: #061512; background: var(--cyan); font-weight: 700; cursor: pointer; }
 .saved { min-height: 16px; margin-top: 10px; color: var(--cyan); font-family: 'DM Mono', monospace; font-size: 10px; }
+.gaze-cursor { position: fixed; z-index: 10; left: 50%; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); border: 2px solid rgba(237, 247, 243, .9); border-radius: 50%; pointer-events: none; filter: drop-shadow(0 0 5px rgba(0, 0, 0, .8)); }
+.gaze-cursor span { position: absolute; inset: 3px; border-radius: 50%; background: var(--cyan); }
+.gaze-cursor::before { content: ''; position: absolute; inset: -7px; border: 2px solid transparent; border-top-color: var(--cyan); border-radius: 50%; transform: rotate(-45deg); opacity: 0; }
+.gaze-cursor.dwell::before { opacity: 1; animation: dwell-progress var(--dwell-time, 1400ms) linear forwards; }
+@keyframes dwell-progress { from { clip-path: inset(0 0 0 50%); transform: rotate(-45deg); } to { clip-path: inset(0 0 0 0); transform: rotate(315deg); } }
 
 #start-screen { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 26px; background: #081017; transition: opacity .35s, visibility .35s; }
 #start-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }

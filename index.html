@@ -18,8 +18,10 @@
 
   <div class="hud">
     <div class="brand">3D WORLD</div>
-    <div class="status"><strong id="sensor-status">SENSOR STANDBY</strong><br><span id="orientation">PORTRAIT / TURN PHONE</span></div>
+    <div class="status"><strong id="sensor-status">SENSOR STANDBY</strong><br><span id="orientation">PORTRAIT / TURN PHONE</span><br><button class="camera-permission" id="camera-permission" type="button" hidden>ENABLE CAMERA</button></div>
   </div>
+
+  <div class="gaze-cursor" id="gaze-cursor" aria-hidden="true"><span></span></div>
 
   <main class="menu-node">
     <button class="menu-button" id="menu-button" aria-label="Open spatial menu"></button>
@@ -50,15 +52,15 @@
       <button class="menu-action active" id="smoothing-button" type="button">Sensor smoothing: On</button>
       <button class="menu-action active" id="camera-button" type="button">Camera: On / Rear</button>
       <button class="menu-action active" id="lines-button" type="button">World lines: On</button>
-      <button class="menu-action" id="reset-zero-button" type="button">Reset zero point</button>
+      <button class="menu-action" id="reset-zero-button" type="button">Reset zero point: Off</button>
     </div>
   </section>
 
   <section class="video-wall" id="video-wall" aria-label="YouTube video wall" hidden>
-    <div class="video-wall-head"><span id="video-wall-title">YouTube wall</span><button id="video-wall-close" aria-label="Close video wall">&times;</button></div>
     <iframe id="youtube-frame" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
   </section>
+  <button class="video-close" id="video-wall-close" aria-label="Close video wall" hidden>&times;</button>
 
-  <script type="module" src="app.js?v=11"></script>
+  <script type="module" src="app.js?v=13"></script>
 </body>
 </html>
