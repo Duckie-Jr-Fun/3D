@@ -1,11 +1,12 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js';
+import { CSS3DRenderer, CSS3DObject } from 'https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/renderers/CSS3DRenderer.js';
 
 const video = document.querySelector('#camera');
 const sensorStatus = document.querySelector('#sensor-status');
 const orientationLabel = document.querySelector('#orientation');
 const panel = document.querySelector('#panel');
 const feedback = document.querySelector('#feedback');
-let scene, camera, renderer, roomAnchor, roomGroup, initialSensorQuaternion = null, hasOrientation = false;
+let scene, camera, renderer, cssRenderer, roomAnchor, roomGroup, initialSensorQuaternion = null, hasOrientation = false;
 let smoothingEnabled = true;
 let cameraMode = 'rear';
 let cameraEnabled = true;
@@ -32,12 +33,13 @@ const wallSurfaces = {
   right: { center: new THREE.Vector3(3.85, .75, 0), horizontal: new THREE.Vector3(0, 0, -3.35), vertical: new THREE.Vector3(0, 1.65, 0) }
 };
 const menuWorldPosition = new THREE.Vector3(0, 0, -2.6);
-const mainPanelWorldPosition = new THREE.Vector3(1.7, 0, -2.6);
-const nestedPanelWorldPosition = new THREE.Vector3(-1.7, 0, -2.6);
+const mainPanelWorldPosition = new THREE.Vector3(1.25, 0, -2.6);
+const nestedPanelWorldPosition = new THREE.Vector3(-1.25, 0, -2.6);
 const sensorEuler = new THREE.Euler();
 const sensorQuaternion = new THREE.Quaternion();
 const zee = new THREE.Vector3(0, 0, 1);
 const q0 = new THREE.Quaternion(-Math.sqrt(.5), 0, 0, Math.sqrt(.5));
+let menuObjects;
 
 function projectToPixels(point) {
   const projected = point.clone().project(camera);
@@ -142,6 +144,21 @@ function setupSpace() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
   document.querySelector('#space').appendChild(renderer.domElement);
+  cssRenderer = new CSS3DRenderer();
+  cssRenderer.setSize(innerWidth, innerHeight);
+  cssRenderer.domElement.className = 'css-world';
+  document.querySelector('#space').appendChild(cssRenderer.domElement);
+  menuObjects = [
+    { element: menuNode, position: menuWorldPosition, scale: .01 },
+    { element: menuPanel, position: mainPanelWorldPosition, scale: .0065 },
+    { element: nestedPanel, position: nestedPanelWorldPosition, scale: .0065 }
+  ];
+  menuObjects.forEach(({ element, position, scale }) => {
+    const object = new CSS3DObject(element);
+    object.position.copy(position);
+    object.scale.setScalar(scale);
+    scene.add(object);
+  });
   roomGroup = new THREE.Group();
   scene.add(roomGroup);
   const floor = new THREE.GridHelper(8, 8, 0x70f3d1, 0x70f3d1);
@@ -181,27 +198,11 @@ function animate() {
   if (roomAnchor) {
     camera.quaternion.slerp(camera.userData.targetQuaternion, smoothingEnabled ? .1 : 1);
     camera.updateMatrixWorld();
-    const projected = roomAnchor.position.clone().project(camera);
-    const visible = !hasOrientation || (projected.z > -1 && projected.z < 1 && Math.abs(projected.x) < 1.15 && Math.abs(projected.y) < 1.15);
-    menuNode.style.display = visible ? 'grid' : 'none';
-    menuPanel.style.visibility = visible ? 'visible' : 'hidden';
-    nestedPanel.style.visibility = visible ? 'visible' : 'hidden';
-    if (visible) {
-      const anchorX = (projected.x * .5 + .5) * innerWidth;
-      const anchorY = (-projected.y * .5 + .5) * innerHeight;
-      menuNode.style.left = `${anchorX}px`;
-      menuNode.style.top = `${anchorY}px`;
-      const mainPanelProjected = mainPanelWorldPosition.clone().project(camera);
-      const nestedPanelProjected = nestedPanelWorldPosition.clone().project(camera);
-      menuPanel.style.left = `${(mainPanelProjected.x * .5 + .5) * innerWidth}px`;
-      menuPanel.style.top = `${(-mainPanelProjected.y * .5 + .5) * innerHeight}px`;
-      nestedPanel.style.left = `${(nestedPanelProjected.x * .5 + .5) * innerWidth}px`;
-      nestedPanel.style.top = `${(-nestedPanelProjected.y * .5 + .5) * innerHeight}px`;
-    }
     if (!videoWall.hidden) updateVideoWallProjection();
   }
   updateGazeTarget();
   renderer.render(scene, camera);
+  cssRenderer.render(scene, camera);
 }
 
 async function enter() {
@@ -357,8 +358,8 @@ document.querySelector('#video-wall-close').addEventListener('click', () => {
   youtubeFrame.src = '';
   videoWall.hidden = true;
 });
-addEventListener('resize', () => { if (camera) { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); } });
+addEventListener('resize', () => { if (camera) { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); cssRenderer.setSize(innerWidth, innerHeight); } });
 setupSpace();
 enter();
 cameraPermission.addEventListener('click', enter);
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=13').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=16').catch(() => {});

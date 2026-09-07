@@ -18,6 +18,8 @@ button, input { font: inherit; }
 #camera.front-camera { transform: scaleX(-1); }
 #shade { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgba(3, 11, 16, .68), transparent 28%, rgba(3, 11, 16, .15) 60%, rgba(3, 11, 16, .85)); }
 #space { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+.css-world { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+.css-world > * { pointer-events: auto; }
 
 .hud { position: fixed; z-index: 4; top: max(22px, env(safe-area-inset-top)); left: max(22px, env(safe-area-inset-left)); right: max(22px, env(safe-area-inset-right)); display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
 .brand, .status { text-shadow: 0 2px 15px #000; }
@@ -27,15 +29,15 @@ button, input { font: inherit; }
 .status strong { color: var(--cyan); font-weight: 400; }
 .camera-permission { margin-top: 6px; padding: 4px 7px; border: 1px solid var(--cyan); border-radius: 5px; color: var(--cyan); background: rgba(8, 16, 23, .7); font-family: 'DM Mono', monospace; font-size: 9px; cursor: pointer; }
 
-.menu-node { position: fixed; z-index: 5; left: 50%; top: 51%; transform: translate(-50%, -50%); display: grid; gap: 12px; justify-items: center; transition: left .12s linear, top .12s linear; }
+.menu-node { position: absolute; left: 0; top: 0; z-index: 5; display: grid; gap: 12px; justify-items: center; }
 .menu-button { position: relative; width: 78px; height: 78px; border: 1px solid var(--cyan); border-radius: 50%; color: var(--ink); background: rgba(8, 25, 29, .72); box-shadow: 0 0 0 8px rgba(112, 243, 209, .08), 0 0 32px rgba(112, 243, 209, .28); cursor: pointer; transition: transform .2s, background .2s; }
 .menu-button:hover, .menu-button:focus-visible { transform: scale(1.06); background: rgba(112, 243, 209, .18); outline: none; }
 .menu-button::before, .menu-button::after { content: ''; position: absolute; left: 24px; right: 24px; height: 1px; background: var(--cyan); box-shadow: 0 10px var(--cyan), 0 -10px var(--cyan); }
 .menu-button::before { top: 50%; }
 .node-label { color: var(--cyan); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 2px 10px #000; }
 
-.panel { position: fixed; z-index: 6; left: 50%; top: 50%; width: min(290px, calc(100% - 36px)); transform: translate(-50%, -50%) scale(.96); padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); backdrop-filter: blur(18px); box-shadow: 0 18px 60px rgba(0, 0, 0, .35); opacity: 0; pointer-events: none; transition: transform .35s cubic-bezier(.2, .9, .3, 1), opacity .25s ease; }
-.panel.open { transform: translate(-50%, -50%) scale(1); opacity: 1; pointer-events: auto; }
+.panel { position: absolute; z-index: 6; width: 240px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); backdrop-filter: blur(18px); box-shadow: 0 18px 60px rgba(0, 0, 0, .35); opacity: 0; pointer-events: none; transition: opacity .25s ease; }
+.panel.open { opacity: 1; pointer-events: auto; }
 .nested-panel { z-index: 7; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
 .panel-title { font-size: 14px; font-weight: 600; }
@@ -72,5 +74,3 @@ h1 { max-width: 340px; margin: 14px 0 12px; font-size: clamp(42px, 13vw, 72px); 
 #start { margin-top: 14px; min-height: 48px; }
 .permission-note { margin-top: 15px; color: #607772; font-family: 'DM Mono', monospace; font-size: 10px; line-height: 1.5; }
 
-@media (orientation: portrait) and (min-width: 500px) { .menu-node { top: 48%; } }
-@media (orientation: landscape) { .menu-node { left: 58%; top: 52%; } }
