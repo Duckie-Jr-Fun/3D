@@ -4,12 +4,29 @@ const video = document.querySelector('#camera');
 const sensorStatus = document.querySelector('#sensor-status');
 const orientationLabel = document.querySelector('#orientation');
 const panel = document.querySelector('#panel');
-const note = document.querySelector('#note');
-const saved = document.querySelector('#saved');
-let scene, camera, renderer, roomAnchor, initialSensorQuaternion = null, hasOrientation = false;
+const feedback = document.querySelector('#feedback');
+let scene, camera, renderer, roomAnchor, roomGroup, initialSensorQuaternion = null, hasOrientation = false;
+let smoothingEnabled = true;
+let cameraMode = 'rear';
+let cameraEnabled = true;
+let linesEnabled = true;
 const menuNode = document.querySelector('.menu-node');
 const menuPanel = document.querySelector('#panel');
+const nestedPanel = document.querySelector('#nested-panel');
+const videoWall = document.querySelector('#video-wall');
+const youtubeFrame = document.querySelector('#youtube-frame');
+const wallChoices = document.querySelector('#wall-choices');
+const videoWallTitle = document.querySelector('#video-wall-title');
+let pendingVideoId = null;
+let videoWallPosition = new THREE.Vector3(0, .75, -3.85);
+const wallPositions = {
+  back: new THREE.Vector3(0, .75, -3.85),
+  left: new THREE.Vector3(-3.85, .75, 0),
+  right: new THREE.Vector3(3.85, .75, 0)
+};
 const menuWorldPosition = new THREE.Vector3(0, 0, -2.6);
+const mainPanelWorldPosition = new THREE.Vector3(1.7, 0, -2.6);
+const nestedPanelWorldPosition = new THREE.Vector3(-1.7, 0, -2.6);
 const sensorEuler = new THREE.Euler();
 const sensorQuaternion = new THREE.Quaternion();
 const zee = new THREE.Vector3(0, 0, 1);
@@ -23,7 +40,7 @@ function addBeam(start, end, radius = .035, color = 0x70f3d1, opacity = .75) {
   );
   beam.position.copy(start).add(end).multiplyScalar(.5);
   beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
-  scene.add(beam);
+  (roomGroup || scene).add(beam);
 }
 
 function addRoomStructure() {
@@ -38,15 +55,6 @@ function addRoomStructure() {
   [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]
     .forEach(([start, end]) => addBeam(corners[start], corners[end], .055, 0x70f3d1, .9));
 
-  const major = [
-    [new THREE.Vector3(-2, -1.48, -4), new THREE.Vector3(-2, -1.48, 4)],
-    [new THREE.Vector3(2, -1.48, -4), new THREE.Vector3(2, -1.48, 4)],
-    [new THREE.Vector3(-4, -1.48, -2), new THREE.Vector3(4, -1.48, -2)],
-    [new THREE.Vector3(-4, -1.48, 2), new THREE.Vector3(4, -1.48, 2)],
-    [new THREE.Vector3(-4, .75, -2), new THREE.Vector3(4, .75, -2)],
-    [new THREE.Vector3(-4, 2, -2), new THREE.Vector3(4, 2, -2)]
-  ];
-  major.forEach(([start, end]) => addBeam(start, end, .025, 0x70f3d1, .5));
 }
 
 function addWallGrid(width, height, position, rotation) {
@@ -60,11 +68,11 @@ function addWallGrid(width, height, position, rotation) {
   }
   const grid = new THREE.LineSegments(
     new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(points, 3)),
-    new THREE.LineBasicMaterial({ color: 0x70f3d1, transparent: true, opacity: .08 })
+    new THREE.LineBasicMaterial({ color: 0x70f3d1, transparent: true, opacity: .13 })
   );
   grid.position.copy(position);
   grid.rotation.set(rotation.x, rotation.y, rotation.z);
-  scene.add(grid);
+  (roomGroup || scene).add(grid);
 }
 
 function setupSpace() {
@@ -76,22 +84,24 @@ function setupSpace() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
   document.querySelector('#space').appendChild(renderer.domElement);
+  roomGroup = new THREE.Group();
+  scene.add(roomGroup);
   const floor = new THREE.GridHelper(8, 8, 0x70f3d1, 0x70f3d1);
   floor.material.transparent = true;
-  floor.material.opacity = .12;
+  floor.material.opacity = .16;
   floor.position.y = -1.5;
-  scene.add(floor);
+  roomGroup.add(floor);
   const ceiling = floor.clone();
   ceiling.position.y = 3;
   ceiling.material = floor.material.clone();
   ceiling.material.opacity = .045;
-  scene.add(ceiling);
+  roomGroup.add(ceiling);
   addWallGrid(8, 4.5, new THREE.Vector3(-4, .75, 0), new THREE.Euler(0, Math.PI / 2, 0));
   addWallGrid(8, 4.5, new THREE.Vector3(4, .75, 0), new THREE.Euler(0, Math.PI / 2, 0));
   addWallGrid(8, 4.5, new THREE.Vector3(0, .75, -4), new THREE.Euler(0, 0, 0));
   const roomFrame = new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-4, -1.5, -4), new THREE.Vector3(4, 3, 4)), 0x70f3d1);
   roomFrame.visible = false;
-  scene.add(roomFrame);
+  roomGroup.add(roomFrame);
   addRoomStructure();
   const menuBackdrop = new THREE.Mesh(
     new THREE.CircleGeometry(.709, 48),
@@ -111,17 +121,30 @@ function setupSpace() {
 function animate() {
   requestAnimationFrame(animate);
   if (roomAnchor) {
-    camera.quaternion.slerp(camera.userData.targetQuaternion, .1);
+    camera.quaternion.slerp(camera.userData.targetQuaternion, smoothingEnabled ? .1 : 1);
     camera.updateMatrixWorld();
     const projected = roomAnchor.position.clone().project(camera);
     const visible = !hasOrientation || (projected.z > -1 && projected.z < 1 && Math.abs(projected.x) < 1.15 && Math.abs(projected.y) < 1.15);
     menuNode.style.display = visible ? 'grid' : 'none';
     menuPanel.style.visibility = visible ? 'visible' : 'hidden';
+    nestedPanel.style.visibility = visible ? 'visible' : 'hidden';
     if (visible) {
-      menuNode.style.left = `${(projected.x * .5 + .5) * innerWidth}px`;
-      menuNode.style.top = `${(-projected.y * .5 + .5) * innerHeight}px`;
-      menuPanel.style.left = `${(projected.x * .5 + .5) * innerWidth}px`;
-      menuPanel.style.top = `${(-projected.y * .5 + .5) * innerHeight}px`;
+      const anchorX = (projected.x * .5 + .5) * innerWidth;
+      const anchorY = (-projected.y * .5 + .5) * innerHeight;
+      menuNode.style.left = `${anchorX}px`;
+      menuNode.style.top = `${anchorY}px`;
+      const mainPanelProjected = mainPanelWorldPosition.clone().project(camera);
+      const nestedPanelProjected = nestedPanelWorldPosition.clone().project(camera);
+      menuPanel.style.left = `${(mainPanelProjected.x * .5 + .5) * innerWidth}px`;
+      menuPanel.style.top = `${(-mainPanelProjected.y * .5 + .5) * innerHeight}px`;
+      nestedPanel.style.left = `${(nestedPanelProjected.x * .5 + .5) * innerWidth}px`;
+      nestedPanel.style.top = `${(-nestedPanelProjected.y * .5 + .5) * innerHeight}px`;
+      if (!videoWall.hidden) {
+        const videoWallProjected = videoWallPosition.clone().project(camera);
+        videoWall.style.left = `${(videoWallProjected.x * .5 + .5) * innerWidth}px`;
+        videoWall.style.top = `${(-videoWallProjected.y * .5 + .5) * innerHeight}px`;
+        videoWall.style.visibility = videoWallProjected.z > -1 && videoWallProjected.z < 1 ? 'visible' : 'hidden';
+      }
     }
   }
   renderer.render(scene, camera);
@@ -129,9 +152,14 @@ function animate() {
 
 async function enter() {
   try {
-    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    video.srcObject = await requestCamera('rear');
   } catch (error) {
-    saved.textContent = 'Camera unavailable - spatial mode still active.';
+    try {
+      cameraMode = 'front';
+      video.srcObject = await requestCamera('front');
+    } catch (fallbackError) {
+      feedback.textContent = 'Camera unavailable - spatial mode still active.';
+    }
   }
   if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => {});
   if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
@@ -139,6 +167,13 @@ async function enter() {
   }
   window.addEventListener('deviceorientation', trackTilt, true);
   sensorStatus.textContent = 'SENSOR READY';
+}
+
+function requestCamera(mode) {
+  return navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: mode === 'rear' ? 'environment' : 'user' } },
+    audio: false
+  });
 }
 
 function trackTilt(event) {
@@ -161,10 +196,89 @@ function trackTilt(event) {
   orientationLabel.textContent = `${innerWidth > innerHeight ? 'LANDSCAPE' : 'PORTRAIT'} / ZERO ${Math.round(event.alpha || 0)}°`;
 }
 
-document.querySelector('#menu-button').addEventListener('click', () => { panel.classList.add('open'); setTimeout(() => note.focus(), 250); });
+document.querySelector('#menu-button').addEventListener('click', () => panel.classList.add('open'));
 document.querySelector('#close').addEventListener('click', () => panel.classList.remove('open'));
-document.querySelector('#entry').addEventListener('submit', (event) => { event.preventDefault(); if (!note.value.trim()) return; saved.textContent = `NOTE PLACED: “${note.value.trim()}”`; note.value = ''; });
+const nestedTitle = document.querySelector('#nested-title');
+const nestedMeta = document.querySelector('#nested-meta');
+const youtubeTools = document.querySelector('#youtube-tools');
+const settingsTools = document.querySelector('#settings-tools');
+function openNestedPanel(title, meta) {
+  nestedTitle.textContent = title;
+  nestedMeta.textContent = meta;
+  youtubeTools.hidden = title !== 'YouTube';
+  settingsTools.hidden = title !== 'Settings';
+  document.querySelector('#nested-panel').classList.add('open');
+}
+document.querySelector('#youtube-button').addEventListener('click', () => openNestedPanel('YouTube', 'VIDEO SPACE'));
+document.querySelector('#settings-button').addEventListener('click', () => openNestedPanel('Settings', 'MY WORLD PREFERENCES'));
+document.querySelector('#nested-close').addEventListener('click', () => document.querySelector('#nested-panel').classList.remove('open'));
+document.querySelector('#youtube-entry').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const url = document.querySelector('#youtube-url').value.trim();
+  const videoId = /^[A-Za-z0-9_-]{11}$/.test(url) ? url : (url.match(/[?&]v=([A-Za-z0-9_-]{11})/) || url.match(/youtu\.be\/([A-Za-z0-9_-]{11})/))?.[1];
+  if (!videoId && !/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(url)) {
+    feedback.textContent = 'PASTE A YOUTUBE LINK FIRST.';
+    return;
+  }
+  pendingVideoId = videoId;
+  wallChoices.hidden = false;
+  feedback.textContent = 'CHOOSE A WALL FOR THE VIDEO.';
+});
+document.querySelector('#smoothing-button').addEventListener('click', (event) => {
+  smoothingEnabled = !smoothingEnabled;
+  event.currentTarget.textContent = `Sensor smoothing: ${smoothingEnabled ? 'On' : 'Off'}`;
+});
+document.querySelector('#camera-button').addEventListener('click', async (event) => {
+  const nextMode = !cameraEnabled ? 'rear' : cameraMode === 'rear' ? 'front' : 'off';
+  if (nextMode === 'off') {
+    cameraEnabled = false;
+    video.srcObject?.getTracks().forEach(track => track.stop());
+    video.srcObject = null;
+    event.currentTarget.textContent = 'Camera: Off';
+    feedback.textContent = 'CAMERA OFF. WORLD LINES STILL ACTIVE.';
+    return;
+  }
+  cameraMode = nextMode;
+  cameraEnabled = true;
+  const stream = video.srcObject;
+  stream?.getTracks().forEach(track => track.stop());
+  try {
+    video.srcObject = await requestCamera(cameraMode);
+    event.currentTarget.textContent = `Camera: On / ${cameraMode === 'rear' ? 'Rear' : 'Front'}`;
+    feedback.textContent = `${cameraMode === 'rear' ? 'REAR' : 'FRONT'} CAMERA ACTIVE.`;
+  } catch (error) {
+    cameraEnabled = false;
+    cameraMode = 'off';
+    feedback.textContent = 'CAMERA SWITCH FAILED.';
+  }
+});
+document.querySelector('#lines-button').addEventListener('click', (event) => {
+  linesEnabled = !linesEnabled;
+  roomGroup.visible = linesEnabled;
+  event.currentTarget.textContent = `World lines: ${linesEnabled ? 'On' : 'Off'}`;
+  feedback.textContent = linesEnabled ? 'WORLD LINES ON.' : 'WORLD LINES OFF. MENU MARKINGS REMAIN.';
+});
+document.querySelector('#reset-zero-button').addEventListener('click', () => {
+  initialSensorQuaternion = null;
+  feedback.textContent = 'POINT PHONE FORWARD TO SET A NEW ZERO.';
+});
+wallChoices.querySelectorAll('[data-wall]').forEach(button => {
+  button.addEventListener('click', () => {
+    if (!pendingVideoId) return;
+    const wall = button.dataset.wall;
+    videoWallPosition = wallPositions[wall];
+    youtubeFrame.src = `https://www.youtube.com/embed/${pendingVideoId}?autoplay=1&rel=0`;
+    videoWallTitle.textContent = `YouTube / ${wall} wall`;
+    videoWall.hidden = false;
+    document.querySelector('#nested-panel').classList.remove('open');
+    feedback.textContent = 'VIDEO PLACED IN YOUR WORLD.';
+  });
+});
+document.querySelector('#video-wall-close').addEventListener('click', () => {
+  youtubeFrame.src = '';
+  videoWall.hidden = true;
+});
 addEventListener('resize', () => { if (camera) { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); } });
 setupSpace();
 enter();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=3').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=9').catch(() => {});

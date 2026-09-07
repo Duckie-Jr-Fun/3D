@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=6">
   <title>My 3D World</title>
 </head>
 <body>
@@ -25,12 +25,40 @@
     <button class="menu-button" id="menu-button" aria-label="Open spatial menu"></button>
   </main>
 
-  <section class="panel" id="panel" aria-label="Menu editor">
-    <div class="panel-head"><div><div class="panel-title">Place a note</div><div class="panel-meta">ANCHORED TO FIRST HEADING</div></div><button class="close" id="close" aria-label="Close menu">&times;</button></div>
-    <form class="entry" id="entry"><input id="note" type="text" maxlength="80" placeholder="Type something here..." autocomplete="off"><button type="submit">Add</button></form>
-    <div class="saved" id="saved" aria-live="polite"></div>
+  <section class="panel main-panel" id="panel" aria-label="Main menu">
+    <div class="panel-head"><div><div class="panel-title">My World</div><div class="panel-meta">MAIN MENU</div></div><button class="close" id="close" aria-label="Close menu">&times;</button></div>
+    <nav class="menu-actions" aria-label="Main menu options">
+      <button class="menu-action" id="youtube-button" type="button">YouTube</button>
+      <button class="menu-action" id="settings-button" type="button">Settings</button>
+    </nav>
+    <div class="saved" id="feedback" aria-live="polite"></div>
   </section>
 
-  <script type="module" src="app.js?v=3"></script>
+  <section class="panel nested-panel" id="nested-panel" aria-label="Secondary menu">
+    <div class="panel-head"><div><div class="panel-title" id="nested-title">YouTube</div><div class="panel-meta" id="nested-meta">VIDEO SPACE</div></div><button class="close" id="nested-close" aria-label="Close secondary menu">&times;</button></div>
+    <div id="youtube-tools">
+      <div class="subtle-copy">Bring a video into your world.</div>
+      <form class="entry" id="youtube-entry"><input id="youtube-url" type="text" placeholder="YouTube link or 11-character ID" autocomplete="off"><button type="submit">Open</button></form>
+      <div class="wall-choices" id="wall-choices" hidden>
+        <div class="panel-meta">CHOOSE A WALL</div>
+        <button class="menu-action" data-wall="back" type="button">Back wall</button>
+        <button class="menu-action" data-wall="left" type="button">Left wall</button>
+        <button class="menu-action" data-wall="right" type="button">Right wall</button>
+      </div>
+    </div>
+    <div id="settings-tools" hidden>
+      <button class="menu-action active" id="smoothing-button" type="button">Sensor smoothing: On</button>
+      <button class="menu-action active" id="camera-button" type="button">Camera: On / Rear</button>
+      <button class="menu-action active" id="lines-button" type="button">World lines: On</button>
+      <button class="menu-action" id="reset-zero-button" type="button">Reset zero point</button>
+    </div>
+  </section>
+
+  <section class="video-wall" id="video-wall" aria-label="YouTube video wall" hidden>
+    <div class="video-wall-head"><span id="video-wall-title">YouTube wall</span><button id="video-wall-close" aria-label="Close video wall">&times;</button></div>
+    <iframe id="youtube-frame" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+  </section>
+
+  <script type="module" src="app.js?v=9"></script>
 </body>
 </html>
