@@ -42,19 +42,25 @@ function projectToPixels(point) {
 
 function updateVideoWallProjection() {
   const surface = wallSurfaces[activeVideoWall];
-  const center = projectToPixels(surface.center);
-  const horizontalPoint = projectToPixels(surface.center.clone().add(surface.horizontal));
-  const verticalPoint = projectToPixels(surface.center.clone().add(surface.vertical));
-  const horizontalVector = horizontalPoint.clone().sub(center);
-  const verticalVector = verticalPoint.clone().sub(center);
-  const width = Math.max(120, horizontalVector.length() * 2);
-  const height = Math.max(80, verticalVector.length() * 2);
-  const angle = Math.atan2(horizontalVector.y, horizontalVector.x);
-  videoWall.style.left = `${center.x}px`;
-  videoWall.style.top = `${center.y}px`;
+  const corners = [
+    surface.center.clone().sub(surface.horizontal).add(surface.vertical),
+    surface.center.clone().add(surface.horizontal).add(surface.vertical),
+    surface.center.clone().add(surface.horizontal).sub(surface.vertical),
+    surface.center.clone().sub(surface.horizontal).sub(surface.vertical)
+  ].map(projectToPixels);
+  const minX = Math.min(...corners.map(point => point.x));
+  const maxX = Math.max(...corners.map(point => point.x));
+  const minY = Math.min(...corners.map(point => point.y));
+  const maxY = Math.max(...corners.map(point => point.y));
+  const width = Math.max(120, maxX - minX);
+  const height = Math.max(80, maxY - minY);
+  const clip = corners.map(point => `${((point.x - minX) / width) * 100}% ${((point.y - minY) / height) * 100}%`).join(', ');
+  videoWall.style.left = `${minX}px`;
+  videoWall.style.top = `${minY}px`;
   videoWall.style.width = `${width}px`;
   videoWall.style.height = `${height}px`;
-  videoWall.style.transform = `translate(-50%, -50%) rotate(${angle}rad)`;
+  videoWall.style.transform = 'none';
+  videoWall.style.clipPath = `polygon(${clip})`;
   const centerDepth = surface.center.clone().project(camera).z;
   videoWall.style.visibility = centerDepth > -1 && centerDepth < 1 ? 'visible' : 'hidden';
 }
@@ -303,4 +309,4 @@ document.querySelector('#video-wall-close').addEventListener('click', () => {
 addEventListener('resize', () => { if (camera) { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); } });
 setupSpace();
 enter();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=10').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=11').catch(() => {});
