@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #081016;
+      --panel: #13212a;
+      --panel-light: #1a2d37;
+      --line: #2d4650;
+      --text: #e9f5f2;
+      --muted: #9bb2b0;
+      --accent: #78f5d0;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      overflow: hidden;
+      color: var(--text);
+      background: var(--bg);
+      font: 14px system-ui, sans-serif;
+      perspective: 1100px;
+    }
+
+    body.vr-mode { background: #05090c; }
+
+    body.vr-mode::after {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+      content: '';
+      border-left: 1px solid rgba(120, 245, 208, .25);
+      box-shadow: inset 50vw 0 rgba(120, 245, 208, .025), inset -50vw 0 rgba(120, 245, 208, .025);
+    }
+
+    body.vr-mode .browser-window {
+      left: calc(50vw + 4px);
+      top: 8px;
+      width: calc(50vw - 12px);
+      height: calc(100vh - 16px);
+      min-width: 260px;
+      min-height: 220px;
+    }
+
+    .vr-right-eye {
+      display: none;
+      position: fixed;
+      inset: 8px 50% 8px 8px;
+      z-index: 1;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+
+    body.vr-mode .vr-right-eye { display: block; }
+
+    .right-browser-ui {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      border-radius: inherit;
+      opacity: .82;
+      pointer-events: none;
+    }
+
+    .right-browser-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-light);
+    }
+
+    .right-browser-toolbar .address-copy {
+      min-width: 0;
+      flex: 1;
+      height: 30px;
+      padding: 7px 10px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      background: var(--bg);
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .right-browser-toolbar b {
+      display: grid;
+      place-items: center;
+      min-width: 30px;
+      height: 30px;
+      padding: 0 7px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .right-browser-toolbar .dot-control {
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    .blank-site { flex: 1; background: #0c171d; }
+
+    body.vr-mode .vr-right-eye::after {
+      position: fixed;
+      top: 50%;
+      left: 25%;
+      width: 10px;
+      height: 10px;
+      border: 1px solid rgba(233, 245, 242, .95);
+      border-radius: 50%;
+      background: var(--accent);
+      content: '';
+      transform: translate(-50%, -50%);
+    }
+
+    body.dot-off .vr-right-eye::after { display: none; }
+
+    .center-dot {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      z-index: 4;
+      width: 10px;
+      height: 10px;
+      border: 1px solid rgba(233, 245, 242, .95);
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 2px rgba(8, 16, 22, .45), 0 0 6px rgba(0, 0, 0, .8);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+
+    .center-dot[hidden] { display: none; }
+    body.vr-mode .center-dot { left: 75%; }
+
+    .browser-window {
+      position: absolute;
+      top: 8vh;
+      left: 8vw;
+      display: flex;
+      flex-direction: column;
+      width: min(900px, 84vw);
+      height: min(620px, 78vh);
+      min-width: 280px;
+      min-height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--panel);
+      box-shadow: 0 20px 55px rgba(0, 0, 0, .38);
+      resize: both;
+      transform: translate3d(0, 0, 0) rotateX(0) rotateY(0);
+      transform-style: preserve-3d;
+      transition: box-shadow .2s ease;
+    }
+
+    .browser-window.moving { box-shadow: 0 30px 70px rgba(0, 0, 0, .52), 0 0 0 1px var(--accent); }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-light);
+      user-select: none;
+    }
+
+    .drag-handle {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      color: var(--muted);
+      cursor: grab;
+      font-size: 17px;
+    }
+
+    .drag-handle:active { cursor: grabbing; }
+
+    input {
+      min-width: 0;
+      flex: 1;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+    }
+
+    input:focus { border-color: var(--accent); }
+
+    button {
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--text);
+      background: var(--bg);
+      cursor: pointer;
+    }
+
+    button:hover, button:focus-visible {
+      border-color: var(--accent);
+      color: var(--accent);
+      outline: none;
+    }
+
+    #vr-button.active { border-color: var(--accent); color: var(--accent); background: rgba(120, 245, 208, .1); }
+
+    #dot-button.active { border-color: var(--accent); color: var(--accent); background: rgba(120, 245, 208, .1); }
+
+    .browser-frame {
+      display: block;
+      width: 100%;
+      flex: 1;
+      border: 0;
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="center-dot" id="center-dot" aria-hidden="true"></div>
+  <div class="vr-right-eye" aria-hidden="true">
+    <div class="right-browser-ui">
+      <div class="right-browser-toolbar">
+        <span class="drag-handle">⋮⋮</span>
+        <span class="address-copy">https://example.com</span>
+        <b>Go</b><b>Move</b><b>Set 0</b><b>VR</b><b class="dot-control">Dot</b>
+      </div>
+      <div class="blank-site"></div>
+    </div>
+  </div>
+  <main class="browser-window" id="browser-window">
+    <form class="toolbar" id="browser-form">
+      <span class="drag-handle" id="drag-handle" title="Move browser" aria-label="Move browser">⋮⋮</span>
+      <input id="url" type="text" value="https://example.com" placeholder="Enter a web address" aria-label="Web address" autocomplete="url">
+      <button type="submit">Go</button>
+      <button type="button" id="move-button">Move</button>
+      <button type="button" id="set-zero">Set 0</button>
+      <button type="button" id="vr-button" aria-pressed="false">VR</button>
+      <button type="button" id="dot-button" class="active" aria-pressed="true">Dot</button>
+    </form>
+    <iframe class="browser-frame" id="browser-frame" title="Browser page" src="https://example.com"></iframe>
+  </main>
+
+  <script>
+    const windowElement = document.querySelector('#browser-window');
+    const form = document.querySelector('#browser-form');
+    const urlInput = document.querySelector('#url');
+    const frame = document.querySelector('#browser-frame');
+    const moveButton = document.querySelector('#move-button');
+    const vrButton = document.querySelector('#vr-button');
+    const dotButton = document.querySelector('#dot-button');
+    const centerDot = document.querySelector('#center-dot');
+    const dragHandle = document.querySelector('#drag-handle');
+    let moving = false;
+    let vrMode = false;
+    let depth = 0;
+    let rotation = 0;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    function normalizeUrl(value) {
+      const input = value.trim();
+      if (!input) throw new Error('Missing URL');
+      return new URL(/^[a-z]+:\/\//i.test(input) ? input : `https://${input}`).href;
+    }
+
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      try {
+        const url = normalizeUrl(urlInput.value);
+        urlInput.value = url;
+        frame.src = url;
+      } catch (error) {
+        urlInput.setCustomValidity('Enter a valid web address.');
+        urlInput.reportValidity();
+      }
+    });
+
+    urlInput.addEventListener('input', () => urlInput.setCustomValidity(''));
+    moveButton.addEventListener('click', () => {
+      moving = !moving;
+      moveButton.textContent = moving ? 'Moving' : 'Move';
+      dragHandle.style.color = moving ? 'var(--accent)' : '';
+      windowElement.classList.toggle('moving', moving);
+    });
+    vrButton.addEventListener('click', () => {
+      vrMode = !vrMode;
+      document.body.classList.toggle('vr-mode', vrMode);
+      vrButton.classList.toggle('active', vrMode);
+      vrButton.setAttribute('aria-pressed', String(vrMode));
+    });
+    dotButton.addEventListener('click', () => {
+      const visible = centerDot.hidden;
+      centerDot.hidden = !visible;
+      document.body.classList.toggle('dot-off', !visible);
+      dotButton.classList.toggle('active', visible);
+      dotButton.setAttribute('aria-pressed', String(visible));
+    });
+    document.querySelector('.dot-control').addEventListener('click', () => dotButton.click());
+    document.addEventListener('pointerdown', event => {
+      if (!moving || !event.target.closest('#drag-handle')) return;
+      const box = windowElement.getBoundingClientRect();
+      startX = event.clientX;
+      startY = event.clientY;
+      startLeft = box.left;
+      startTop = box.top;
+      dragHandle.setPointerCapture(event.pointerId);
+    });
+    dragHandle.addEventListener('pointermove', event => {
+      if (!moving || !dragHandle.hasPointerCapture(event.pointerId)) return;
+      const left = Math.max(0, Math.min(innerWidth - windowElement.offsetWidth, startLeft + event.clientX - startX));
+      const top = Math.max(0, Math.min(innerHeight - windowElement.offsetHeight, startTop + event.clientY - startY));
+      windowElement.style.left = `${left}px`;
+      windowElement.style.top = `${top}px`;
+      rotation = Math.max(-8, Math.min(8, (event.clientX - innerWidth / 2) / 80));
+      windowElement.style.transform = `translate3d(0, 0, ${depth}px) rotateY(${rotation}deg)`;
+    });
+    dragHandle.addEventListener('wheel', event => {
+      if (!moving) return;
+      event.preventDefault();
+      depth = Math.max(-350, Math.min(350, depth - event.deltaY));
+      windowElement.style.transform = `translate3d(0, 0, ${depth}px) rotateY(${rotation}deg)`;
+    }, { passive: false });
+    dragHandle.addEventListener('pointerup', event => dragHandle.releasePointerCapture(event.pointerId));
+    document.querySelector('#set-zero').addEventListener('click', () => {
+      windowElement.style.left = '0px';
+      windowElement.style.top = '0px';
+      depth = 0;
+      rotation = 0;
+      windowElement.style.transform = 'translate3d(0, 0, 0) rotateX(0) rotateY(0)';
+    });
+  </script>
+</body>
+</html>

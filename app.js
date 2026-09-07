@@ -2,364 +2,473 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.m
 import { CSS3DRenderer, CSS3DObject } from 'https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/renderers/CSS3DRenderer.js';
 
 const video = document.querySelector('#camera');
-const sensorStatus = document.querySelector('#sensor-status');
-const orientationLabel = document.querySelector('#orientation');
-const panel = document.querySelector('#panel');
-const feedback = document.querySelector('#feedback');
-let scene, camera, renderer, cssRenderer, roomAnchor, roomGroup, initialSensorQuaternion = null, hasOrientation = false;
-let smoothingEnabled = true;
-let cameraMode = 'rear';
-let cameraEnabled = true;
-let linesEnabled = true;
-const menuNode = document.querySelector('.menu-node');
-const menuPanel = document.querySelector('#panel');
-const nestedPanel = document.querySelector('#nested-panel');
-const videoWall = document.querySelector('#video-wall');
-const youtubeFrame = document.querySelector('#youtube-frame');
-const wallChoices = document.querySelector('#wall-choices');
-const videoWallTitle = document.querySelector('#video-wall-title');
-const cameraPermission = document.querySelector('#camera-permission');
+const vrVideo = document.querySelector('#vr-camera');
+const space = document.querySelector('#space');
 const gazeCursor = document.querySelector('#gaze-cursor');
-const resetZeroButton = document.querySelector('#reset-zero-button');
-let pendingVideoId = null;
-let activeVideoWall = 'back';
-let resetZeroMode = false;
-let dwellTarget = null;
-let dwellTimer = null;
-const dwellDuration = 1400;
-const wallSurfaces = {
-  back: { center: new THREE.Vector3(0, .75, -3.85), horizontal: new THREE.Vector3(3.35, 0, 0), vertical: new THREE.Vector3(0, 1.65, 0) },
-  left: { center: new THREE.Vector3(-3.85, .75, 0), horizontal: new THREE.Vector3(0, 0, 3.35), vertical: new THREE.Vector3(0, 1.65, 0) },
-  right: { center: new THREE.Vector3(3.85, .75, 0), horizontal: new THREE.Vector3(0, 0, -3.35), vertical: new THREE.Vector3(0, 1.65, 0) }
-};
-const menuWorldPosition = new THREE.Vector3(0, 0, -2.6);
-const mainPanelWorldPosition = new THREE.Vector3(1.25, 0, -2.6);
-const nestedPanelWorldPosition = new THREE.Vector3(-1.25, 0, -2.6);
+const gazeCursorRight = document.querySelector('#gaze-cursor-right');
+const cameraPermission = document.querySelector('#camera-permission');
+const iframePlayer = document.querySelector('#iframe-player');
+const dwellDuration = 1000;
+let scene, rightScene, camera, renderer, cssRenderer, rightCssRenderer, initialSensorQuaternion = null;
+let dwellTarget = null, dwellTimer = null, cameraMode = 'off';
+let smoothingEnabled = true, stereoEnabled = false, resetOriginOnNextReading = false, movingAnchor = null, moveTimer = null, recenterTimer = null, recentering = false;
+let sensorListening = false;
+let appDistance = 2;
+let iframeDistance = 2;
+let iframeIsYoutube = false;
+let calculatorExpression = '';
+let calculatorResetOnDigit = false;
+let lastInputPointerType = '';
+const launcherDistance = 3;
+let launcherAnchor = null;
+const placementSlots = [
+  { angle: 0, y: .85 },
+  { angle: 0, y: .15 },
+  { angle: 0, y: -.55 },
+  { angle: 0, y: -1.25 },
+  { angle: 0, y: -1.95 }
+];
 const sensorEuler = new THREE.Euler();
 const sensorQuaternion = new THREE.Quaternion();
-const zee = new THREE.Vector3(0, 0, 1);
-const q0 = new THREE.Quaternion(-Math.sqrt(.5), 0, 0, Math.sqrt(.5));
-let menuObjects;
-
-function projectToPixels(point) {
-  const projected = point.clone().project(camera);
-  return new THREE.Vector2(
-    (projected.x * .5 + .5) * innerWidth,
-    (-projected.y * .5 + .5) * innerHeight
-  );
-}
-
-function updateVideoWallProjection() {
-  const surface = wallSurfaces[activeVideoWall];
-  const corners = [
-    surface.center.clone().sub(surface.horizontal).add(surface.vertical),
-    surface.center.clone().add(surface.horizontal).add(surface.vertical),
-    surface.center.clone().add(surface.horizontal).sub(surface.vertical),
-    surface.center.clone().sub(surface.horizontal).sub(surface.vertical)
-  ].map(projectToPixels);
-  const minX = Math.min(...corners.map(point => point.x));
-  const maxX = Math.max(...corners.map(point => point.x));
-  const minY = Math.min(...corners.map(point => point.y));
-  const maxY = Math.max(...corners.map(point => point.y));
-  const width = Math.max(120, maxX - minX);
-  const height = Math.max(80, maxY - minY);
-  const clip = corners.map(point => `${((point.x - minX) / width) * 100}% ${((point.y - minY) / height) * 100}%`).join(', ');
-  videoWall.style.left = `${minX}px`;
-  videoWall.style.top = `${minY}px`;
-  videoWall.style.width = `${width}px`;
-  videoWall.style.height = `${height}px`;
-  videoWall.style.transform = 'none';
-  videoWall.style.clipPath = `polygon(${clip})`;
-  const centerDepth = surface.center.clone().project(camera).z;
-  videoWall.style.visibility = centerDepth > -1 && centerDepth < 1 ? 'visible' : 'hidden';
-}
+const screenAxis = new THREE.Vector3(0, 0, 1);
+const sensorCorrection = new THREE.Quaternion(-Math.sqrt(.5), 0, 0, Math.sqrt(.5));
+const appAnchors = new Map();
+const appRegistry = new Map();
 
 function updateGazeTarget() {
-  const target = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
-  const actionable = target?.closest('button, input, [data-wall]');
-  const nextDwellTarget = actionable && actionable !== cameraPermission && !actionable.disabled && !actionable.closest('#gaze-cursor') ? actionable : null;
-  if (nextDwellTarget === dwellTarget) return;
+  if (movingAnchor) {
+    clearTimeout(dwellTimer);
+    gazeCursor.classList.remove('dwell');
+    gazeCursorRight.classList.remove('dwell');
+    dwellTarget = null;
+    return;
+  }
+  const gazeX = stereoEnabled ? innerWidth * .25 : innerWidth / 2;
+  const element = document.elementFromPoint(gazeX, innerHeight / 2);
+  const actionable = element?.closest('[data-gaze], button, input, textarea');
+  const nextTarget = actionable && !actionable.disabled && !actionable.closest('#gaze-cursor') ? actionable : null;
+  if (nextTarget === dwellTarget) return;
   clearTimeout(dwellTimer);
   gazeCursor.classList.remove('dwell');
-  dwellTarget = nextDwellTarget;
+  gazeCursorRight.classList.remove('dwell');
+  dwellTarget = nextTarget;
   if (!dwellTarget) return;
-  gazeCursor.style.setProperty('--dwell-time', `${dwellDuration}ms`);
   gazeCursor.classList.add('dwell');
+  gazeCursorRight.classList.add('dwell');
   dwellTimer = setTimeout(() => {
-    dwellTarget.click();
+    if (dwellTarget) dwellTarget.click();
     gazeCursor.classList.remove('dwell');
+    gazeCursorRight.classList.remove('dwell');
     dwellTarget = null;
   }, dwellDuration);
 }
 
-function addBeam(start, end, radius = .035, color = 0x70f3d1, opacity = .75) {
-  const direction = new THREE.Vector3().subVectors(end, start);
-  const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, direction.length(), 8),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity })
-  );
-  beam.position.copy(start).add(end).multiplyScalar(.5);
-  beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
-  (roomGroup || scene).add(beam);
+function startMove(appId) {
+  const anchor = appAnchors.get(appId);
+  if (!anchor) return;
+  clearTimeout(moveTimer);
+  anchor.userData.slotIndex = null;
+  movingAnchor = anchor;
+  anchor.element.classList.add('moving');
+  anchor.userData.rightElement.classList.add('moving');
+  moveTimer = setTimeout(() => {
+    anchor.element.classList.remove('moving');
+    anchor.userData.rightElement.classList.remove('moving');
+    movingAnchor = null;
+  }, 2500);
 }
 
-function addRoomStructure() {
-  const min = new THREE.Vector3(-4, -1.5, -4);
-  const max = new THREE.Vector3(4, 3, 4);
-  const corners = [
-    new THREE.Vector3(min.x, min.y, min.z), new THREE.Vector3(max.x, min.y, min.z),
-    new THREE.Vector3(max.x, min.y, max.z), new THREE.Vector3(min.x, min.y, max.z),
-    new THREE.Vector3(min.x, max.y, min.z), new THREE.Vector3(max.x, max.y, min.z),
-    new THREE.Vector3(max.x, max.y, max.z), new THREE.Vector3(min.x, max.y, max.z)
-  ];
-  [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]
-    .forEach(([start, end]) => addBeam(corners[start], corners[end], .055, 0x70f3d1, .9));
-
+function createAppAnchor(element, position, scale = .006) {
+  const object = new CSS3DObject(element);
+  object.position.copy(position);
+  object.scale.setScalar(scale);
+  object.lookAt(camera.position);
+  scene.add(object);
+  const rightElement = element.cloneNode(true);
+  rightElement.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
+  rightElement.removeAttribute('id');
+  if (element.id === 'iframe-video' && iframeIsYoutube) rightElement.querySelector('iframe')?.removeAttribute('src');
+  rightElement.setAttribute('aria-hidden', 'true');
+  rightElement.style.pointerEvents = 'none';
+  const rightObject = new CSS3DObject(rightElement);
+  rightObject.position.copy(position);
+  rightObject.scale.setScalar(scale);
+  rightObject.lookAt(camera.position);
+  rightScene.add(rightObject);
+  object.userData.rightObject = rightObject;
+  object.userData.rightElement = rightElement;
+  return object;
 }
 
-function addWallGrid(width, height, position, rotation) {
-  const points = [];
-  const divisions = 8;
-  for (let index = 0; index <= divisions; index += 1) {
-    const x = -width / 2 + (width * index) / divisions;
-    const y = -height / 2 + (height * index) / divisions;
-    points.push(-width / 2, y, 0, width / 2, y, 0);
-    points.push(x, -height / 2, 0, x, height / 2, 0);
+function getAvailableSlot() {
+  const occupied = new Set([...appAnchors.values()].map(anchor => anchor.userData.slotIndex).filter(index => index !== null));
+  return placementSlots.findIndex((slot, index) => !occupied.has(index));
+}
+
+function placeInGaze(element, distance = 2.2, slotIndex = -1) {
+  const direction = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  const up = new THREE.Vector3();
+  camera.getWorldDirection(direction);
+  right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  const slot = placementSlots[slotIndex] || { angle: 0, y: 0 };
+  const angle = THREE.MathUtils.degToRad(slot.angle);
+  const angledDirection = direction.clone().multiplyScalar(Math.cos(angle)).add(right.clone().multiplyScalar(Math.sin(angle))).normalize();
+  const position = camera.position.clone().add(angledDirection.multiplyScalar(distance)).add(up.multiplyScalar(slot.y));
+  const anchor = createAppAnchor(element, position, .0055);
+  anchor.userData.slotIndex = slotIndex;
+  return anchor;
+}
+
+function moveAnchorToDistance(anchor, distance, slotIndex = -1) {
+  const direction = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  const up = new THREE.Vector3();
+  camera.getWorldDirection(direction);
+  right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  const slot = placementSlots[slotIndex] || { angle: 0, y: 0 };
+  const angle = THREE.MathUtils.degToRad(slot.angle);
+  const angledDirection = direction.clone().multiplyScalar(Math.cos(angle)).add(right.clone().multiplyScalar(Math.sin(angle))).normalize();
+  const verticalOffset = slot.y + (anchor === launcherAnchor ? -.85 : 0);
+  anchor.position.copy(camera.position).add(angledDirection.multiplyScalar(distance)).add(up.multiplyScalar(verticalOffset));
+  anchor.lookAt(camera.position);
+  anchor.userData.rightObject.position.copy(anchor.position);
+  anchor.userData.rightObject.lookAt(camera.position);
+}
+
+function updateAppDistance(value) {
+  appDistance = THREE.MathUtils.clamp(Number(value), 1, 10);
+  document.querySelector('#app-distance-value').textContent = `${appDistance.toFixed(1)}m`;
+  const settingsAnchor = appAnchors.get('settings');
+  const rightValue = settingsAnchor?.userData.rightElement.querySelector('#app-distance-value');
+  if (rightValue) rightValue.textContent = `${appDistance.toFixed(1)}m`;
+  appAnchors.forEach((anchor, appId) => {
+    if (appId !== 'iframe-video' && anchor.userData.slotIndex !== null) moveAnchorToDistance(anchor, appDistance, anchor.userData.slotIndex);
+  });
+}
+
+function spawnApp(appId) {
+  const definition = appRegistry.get(appId);
+  if (!definition) return;
+  const existing = appAnchors.get(appId);
+  if (existing) {
+    existing.element.classList.add('window-visible');
+    existing.userData.rightElement.classList.add('window-visible');
+    return;
   }
-  const grid = new THREE.LineSegments(
-    new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(points, 3)),
-    new THREE.LineBasicMaterial({ color: 0x70f3d1, transparent: true, opacity: .13 })
-  );
-  grid.position.copy(position);
-  grid.rotation.set(rotation.x, rotation.y, rotation.z);
-  (roomGroup || scene).add(grid);
+  const element = definition.element || document.getElementById(definition.elementId);
+  if (!element) return;
+  const slotIndex = getAvailableSlot();
+  const anchor = placeInGaze(element, definition.distance ?? appDistance, slotIndex);
+  element.classList.add('window-visible');
+  anchor.userData.rightElement.classList.add('window-visible');
+  appAnchors.set(appId, anchor);
+  definition.onSpawn?.(element);
 }
 
-function setupSpace() {
+function closeApp(appId) {
+  const anchor = appAnchors.get(appId);
+  if (!anchor) return;
+  if (appId === 'iframe-video') {
+    anchor.element.querySelector('iframe')?.removeAttribute('src');
+    anchor.userData.rightElement.querySelector('iframe')?.removeAttribute('src');
+    iframeIsYoutube = false;
+  }
+  anchor.element.classList.remove('window-visible');
+  anchor.userData.rightElement.classList.remove('window-visible');
+  scene.remove(anchor);
+  rightScene.remove(anchor.userData.rightObject);
+  document.body.appendChild(anchor.element);
+  appAnchors.delete(appId);
+}
+
+function recenterOrigin() {
+  recentering = true;
+  clearTimeout(recenterTimer);
+  recenterTimer = setTimeout(() => { recentering = false; }, 2500);
+}
+
+function updateCameraLabel() {
+  document.querySelectorAll('[data-camera-mode]').forEach(button => button.classList.toggle('selected', button.dataset.cameraMode === cameraMode));
+}
+
+async function setCameraMode(mode) {
+  if (mode === 'off') {
+    video.srcObject?.getTracks().forEach(track => track.stop());
+    video.srcObject = null;
+    vrVideo.srcObject = null;
+    video.classList.remove('front-camera');
+    cameraMode = 'off';
+    updateCameraLabel();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: mode === 'rear' ? 'environment' : 'user' } }, audio: false });
+    video.srcObject?.getTracks().forEach(track => track.stop());
+    video.srcObject = stream;
+    vrVideo.srcObject = stream;
+    cameraMode = mode;
+    video.classList.toggle('front-camera', mode === 'front');
+    vrVideo.classList.toggle('front-camera', mode === 'front');
+    updateCameraLabel();
+    cameraPermission.hidden = true;
+  } catch (error) {
+    cameraMode = 'off';
+    updateCameraLabel();
+    cameraPermission.hidden = false;
+  }
+}
+
+function setVrMode(enabled) {
+  stereoEnabled = enabled;
+  if (enabled && iframeIsYoutube) closeIframeVideo();
+  document.body.classList.toggle('vr-mode', enabled);
+  vrVideo.srcObject = enabled ? video.srcObject : null;
+  const width = enabled ? innerWidth / 2 : innerWidth;
+  cssRenderer.setSize(width, innerHeight);
+  rightCssRenderer.setSize(width, innerHeight);
+}
+
+function closeIframeVideo() {
+  const existing = appAnchors.get('iframe-video');
+  if (existing) closeApp('iframe-video');
+  iframePlayer.src = '';
+}
+
+async function requestSensorPermission() {
+  if (sensorListening) return;
+  if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
+    try { await DeviceOrientationEvent.requestPermission(); } catch (error) { return; }
+  }
+  window.addEventListener('deviceorientation', trackTilt, true);
+  sensorListening = true;
+}
+
+function trackTilt(event) {
+  sensorEuler.set(THREE.MathUtils.degToRad(event.beta || 0), THREE.MathUtils.degToRad(event.alpha || 0), THREE.MathUtils.degToRad(-(event.gamma || 0)), 'YXZ');
+  sensorQuaternion.setFromEuler(sensorEuler);
+  sensorQuaternion.multiply(sensorCorrection);
+  sensorQuaternion.multiply(new THREE.Quaternion().setFromAxisAngle(screenAxis, -THREE.MathUtils.degToRad(screen.orientation?.angle || 0)));
+  if (!initialSensorQuaternion || resetOriginOnNextReading || recentering) {
+    initialSensorQuaternion = sensorQuaternion.clone();
+    resetOriginOnNextReading = false;
+  }
+  camera.userData.targetQuaternion.copy(initialSensorQuaternion.clone().invert().multiply(sensorQuaternion));
+}
+
+function setupApps() {
+  appRegistry.set('settings', { elementId: 'settings-app', element: document.querySelector('#settings-app'), label: 'Settings' });
+  appRegistry.set('library', { elementId: 'library-app', element: document.querySelector('#library-app'), label: 'App Library' });
+  appRegistry.set('iframe', { elementId: 'iframe-app', element: document.querySelector('#iframe-app'), label: 'Iframe' });
+  appRegistry.set('iframe-video', { elementId: 'iframe-video', element: document.querySelector('#iframe-video'), label: 'Embedded video', distance: 2.2 });
+  appRegistry.set('calculator', { elementId: 'calculator-app', element: document.querySelector('#calculator-app'), label: 'Calculator' });
+}
+
+function normalizeVideoUrl(value) {
+  if (/^[a-zA-Z0-9_-]{11}$/.test(value)) return `https://www.youtube.com/embed/${value}?autoplay=1&mute=1&playsinline=1&rel=0`;
+  const url = new URL(value);
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported URL');
+  if (url.hostname.includes('youtube.com') && url.pathname === '/watch') {
+    const id = url.searchParams.get('v');
+    if (id) return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&playsinline=1&rel=0`;
+  }
+  if (url.hostname === 'youtu.be') {
+    const id = url.pathname.slice(1);
+    if (id) return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&playsinline=1&rel=0`;
+  }
+  return url.href;
+}
+
+function isYoutubeVideo(value) {
+  if (/^[a-zA-Z0-9_-]{11}$/.test(value)) return true;
+  try {
+    const url = new URL(value);
+    return url.hostname.includes('youtube.com') || url.hostname === 'youtu.be';
+  } catch (error) {
+    return false;
+  }
+}
+
+function setIframeSources(url) {
+  iframePlayer.src = url;
+  const iframeAnchor = appAnchors.get('iframe-video');
+  const rightPlayer = iframeAnchor?.userData.rightElement.querySelector('iframe');
+  if (!rightPlayer) return;
+  if (iframeIsYoutube) rightPlayer.removeAttribute('src');
+  else rightPlayer.src = url;
+}
+
+function openIframeVideo(event) {
+  event.preventDefault();
+  const urlField = document.querySelector('#iframe-url');
+  let url;
+  try {
+    url = normalizeVideoUrl(urlField.value.trim());
+  } catch (error) {
+    urlField.setCustomValidity('Enter a valid video link.');
+    urlField.reportValidity();
+    return;
+  }
+  const nextIframeIsYoutube = isYoutubeVideo(urlField.value.trim());
+  if (stereoEnabled && nextIframeIsYoutube) return;
+  iframeIsYoutube = nextIframeIsYoutube;
+  urlField.setCustomValidity('');
+  const distance = iframeDistance;
+  document.querySelector('#iframe-distance-value').textContent = `${distance.toFixed(1)}m`;
+  appRegistry.get('iframe-video').distance = distance;
+  const existing = appAnchors.get('iframe-video');
+  if (existing) {
+    setIframeSources(url);
+    moveAnchorToDistance(existing, distance, existing.userData.slotIndex);
+    existing.element.classList.add('window-visible');
+    existing.userData.rightElement.classList.add('window-visible');
+  } else {
+    iframePlayer.src = url;
+    spawnApp('iframe-video');
+    setIframeSources(url);
+  }
+}
+
+function updateIframeDistance(delta) {
+  iframeDistance = THREE.MathUtils.clamp(Number((iframeDistance + delta).toFixed(1)), 1, 10);
+  document.querySelector('#iframe-distance-value').textContent = `${iframeDistance.toFixed(1)}m`;
+  const iframeAnchor = appAnchors.get('iframe');
+  const rightValue = iframeAnchor?.userData.rightElement.querySelector('#iframe-distance-value');
+  if (rightValue) rightValue.textContent = `${iframeDistance.toFixed(1)}m`;
+}
+
+function calculatorInput(type, value) {
+  const display = document.querySelector('#calculator-display');
+  if (type === 'clear') { calculatorExpression = ''; calculatorResetOnDigit = false; display.textContent = '0'; return; }
+  if (type === 'backspace') { calculatorExpression = calculatorExpression.slice(0, -1); display.textContent = calculatorExpression || '0'; return; }
+  if (type === 'digit' || type === 'decimal') {
+    if (calculatorResetOnDigit) { calculatorExpression = ''; calculatorResetOnDigit = false; }
+    if (type === 'decimal' && calculatorExpression.split(/[+\-*/]/).pop().includes('.')) return;
+    calculatorExpression += type === 'decimal' ? '.' : value;
+    display.textContent = calculatorExpression;
+    return;
+  }
+  if (type === 'operator') {
+    if (!calculatorExpression) return;
+    calculatorExpression = calculatorExpression.replace(/[+\-*/]+$/, '') + value;
+    display.textContent = calculatorExpression;
+    return;
+  }
+  if (type === 'equals') {
+    if (!/^[0-9+\-*/. ]+$/.test(calculatorExpression)) return;
+    try {
+      const result = Function(`"use strict"; return (${calculatorExpression})`)();
+      if (!Number.isFinite(result)) throw new Error('Invalid result');
+      calculatorExpression = String(Math.round(result * 1e10) / 1e10);
+      display.textContent = calculatorExpression;
+      calculatorResetOnDigit = true;
+    } catch (error) { display.textContent = 'Error'; calculatorExpression = ''; calculatorResetOnDigit = true; }
+  }
+}
+
+function setupScene() {
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, .1, 100);
-  camera.position.set(0, 0, 0);
+  camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, .1, 100);
   camera.userData.targetQuaternion = new THREE.Quaternion();
   renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
-  document.querySelector('#space').appendChild(renderer.domElement);
+  space.appendChild(renderer.domElement);
   cssRenderer = new CSS3DRenderer();
   cssRenderer.setSize(innerWidth, innerHeight);
-  cssRenderer.domElement.className = 'css-world';
-  document.querySelector('#space').appendChild(cssRenderer.domElement);
-  menuObjects = [
-    { element: menuNode, position: menuWorldPosition, scale: .01 },
-    { element: menuPanel, position: mainPanelWorldPosition, scale: .0065 },
-    { element: nestedPanel, position: nestedPanelWorldPosition, scale: .0065 }
-  ];
-  menuObjects.forEach(({ element, position, scale }) => {
-    const object = new CSS3DObject(element);
-    object.position.copy(position);
-    object.scale.setScalar(scale);
-    scene.add(object);
-  });
-  roomGroup = new THREE.Group();
-  scene.add(roomGroup);
-  const floor = new THREE.GridHelper(8, 8, 0x70f3d1, 0x70f3d1);
-  floor.material.transparent = true;
-  floor.material.opacity = .16;
-  floor.position.y = -1.5;
-  roomGroup.add(floor);
-  const ceiling = floor.clone();
-  ceiling.position.y = 3;
-  ceiling.material = floor.material.clone();
-  ceiling.material.opacity = .045;
-  roomGroup.add(ceiling);
-  addWallGrid(8, 4.5, new THREE.Vector3(-4, .75, 0), new THREE.Euler(0, Math.PI / 2, 0));
-  addWallGrid(8, 4.5, new THREE.Vector3(4, .75, 0), new THREE.Euler(0, Math.PI / 2, 0));
-  addWallGrid(8, 4.5, new THREE.Vector3(0, .75, -4), new THREE.Euler(0, 0, 0));
-  const roomFrame = new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(-4, -1.5, -4), new THREE.Vector3(4, 3, 4)), 0x70f3d1);
-  roomFrame.visible = false;
-  roomGroup.add(roomFrame);
-  addRoomStructure();
-  const menuBackdrop = new THREE.Mesh(
-    new THREE.CircleGeometry(.709, 48),
-    new THREE.MeshBasicMaterial({ color: 0x081017, transparent: true, opacity: .9 })
-  );
-  menuBackdrop.position.set(0, 0, -2.6);
-  scene.add(menuBackdrop);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(.743, .776, 48), new THREE.MeshBasicMaterial({ color: 0x70f3d1, transparent: true, opacity: .75 }));
-  ring.position.set(0, 0, -2.56);
-  scene.add(ring);
-  roomAnchor = new THREE.Object3D();
-  roomAnchor.position.copy(menuWorldPosition);
-  scene.add(roomAnchor);
+  cssRenderer.domElement.className = 'css-world css-world-left';
+  space.appendChild(cssRenderer.domElement);
+  rightScene = new THREE.Scene();
+  rightCssRenderer = new CSS3DRenderer();
+  rightCssRenderer.setSize(innerWidth, innerHeight);
+  rightCssRenderer.domElement.className = 'css-world css-world-right';
+  space.appendChild(rightCssRenderer.domElement);
+  launcherAnchor = createAppAnchor(document.querySelector('#launcher'), new THREE.Vector3(0, -.85, -launcherDistance));
+  setupApps();
   animate();
 }
 
 function animate() {
   requestAnimationFrame(animate);
-  if (roomAnchor) {
-    camera.quaternion.slerp(camera.userData.targetQuaternion, smoothingEnabled ? .1 : 1);
-    camera.updateMatrixWorld();
-    if (!videoWall.hidden) updateVideoWallProjection();
+  if (movingAnchor) {
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    const moveDistance = movingAnchor === appAnchors.get('iframe-video') ? appRegistry.get('iframe-video').distance : appDistance;
+    movingAnchor.position.copy(camera.position).add(direction.multiplyScalar(moveDistance));
+    movingAnchor.lookAt(camera.position);
+    movingAnchor.userData.rightObject.position.copy(movingAnchor.position);
+    movingAnchor.userData.rightObject.lookAt(camera.position);
   }
+  camera.quaternion.slerp(camera.userData.targetQuaternion, smoothingEnabled ? .24 : 1);
+  camera.updateMatrixWorld();
   updateGazeTarget();
   renderer.render(scene, camera);
   cssRenderer.render(scene, camera);
+  rightCssRenderer.render(rightScene, camera);
 }
 
-async function enter() {
-  try {
-    await startCamera('rear');
-    cameraPermission.hidden = true;
-  } catch (error) {
-    try {
-      await startCamera('front');
-      cameraPermission.hidden = true;
-    } catch (fallbackError) {
-      feedback.textContent = 'Camera unavailable - spatial mode still active.';
-      cameraPermission.hidden = false;
+function setupInteractions() {
+  document.querySelectorAll('[data-app]').forEach(button => button.addEventListener('click', () => spawnApp(button.dataset.app)));
+  document.querySelectorAll('[data-close-app]').forEach(button => button.addEventListener('click', () => closeApp(button.dataset.closeApp)));
+  document.querySelectorAll('[data-move-app]').forEach(button => button.addEventListener('click', () => startMove(button.dataset.moveApp)));
+  document.querySelectorAll('[data-camera-mode]').forEach(button => button.addEventListener('click', () => setCameraMode(button.dataset.cameraMode)));
+  document.querySelector('#recenter-button').addEventListener('click', recenterOrigin);
+  document.querySelector('#smoothing-button').addEventListener('click', event => {
+    smoothingEnabled = !smoothingEnabled;
+    event.currentTarget.textContent = `SENSOR SMOOTHING: ${smoothingEnabled ? 'ON' : 'OFF'}`;
+  });
+  document.querySelector('#stereo-button').addEventListener('click', event => {
+    setVrMode(!stereoEnabled);
+    event.currentTarget.textContent = `VR mode: ${stereoEnabled ? 'ON' : 'OFF'}`;
+    const settingsAnchor = appAnchors.get('settings');
+    const rightVrButton = settingsAnchor?.userData.rightElement.querySelector('#stereo-button');
+    if (rightVrButton) rightVrButton.textContent = `VR mode: ${stereoEnabled ? 'ON' : 'OFF'} →`;
+  });
+  document.querySelector('#iframe-form').addEventListener('submit', openIframeVideo);
+  const iframeUrl = document.querySelector('#iframe-url');
+  const iframeKeyboard = document.querySelector('#iframe-keyboard');
+  const toggleIframeKeyboard = visible => { iframeKeyboard.hidden = !visible; iframeKeyboard.classList.toggle('keyboard-visible', visible); };
+  iframeUrl.addEventListener('pointerdown', event => { lastInputPointerType = event.pointerType; });
+  iframeUrl.addEventListener('click', event => {
+    if (event.detail === 0) {
+      toggleIframeKeyboard(true);
+    } else if (lastInputPointerType === 'touch') {
+      iframeUrl.focus();
+      toggleIframeKeyboard(false);
+    } else if (lastInputPointerType === 'mouse' || !lastInputPointerType) {
+      toggleIframeKeyboard(true);
     }
-  }
-  if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => {});
-  if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
-    try { await DeviceOrientationEvent.requestPermission(); } catch (error) { /* permission can be granted later */ }
-  }
-  window.addEventListener('deviceorientation', trackTilt, true);
-  sensorStatus.textContent = 'SENSOR READY';
-}
-
-async function startCamera(mode) {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { exact: mode === 'rear' ? 'environment' : 'user' } },
-    audio: false
   });
-  video.srcObject?.getTracks().forEach(track => track.stop());
-  video.srcObject = stream;
-  cameraMode = mode;
-  cameraEnabled = true;
-  video.classList.toggle('front-camera', mode === 'front');
-  return stream;
+  document.querySelector('#iframe-keyboard-toggle').addEventListener('click', () => toggleIframeKeyboard(!iframeKeyboard.classList.contains('keyboard-visible')));
+  document.querySelectorAll('[data-virtual-key]').forEach(key => key.addEventListener('click', () => {
+    const value = key.dataset.virtualKey;
+    if (value === 'CLOSE') { toggleIframeKeyboard(false); return; }
+    if (value === 'BACKSPACE') iframeUrl.value = iframeUrl.value.slice(0, -1);
+    else if (value === 'SPACE') iframeUrl.value += ' ';
+    else iframeUrl.value += value;
+  }));
+  document.querySelector('#iframe-distance-minus').addEventListener('click', () => updateIframeDistance(-.5));
+  document.querySelector('#iframe-distance-plus').addEventListener('click', () => updateIframeDistance(.5));
+  document.querySelector('#app-distance-minus').addEventListener('click', () => updateAppDistance(appDistance - .5));
+  document.querySelector('#app-distance-plus').addEventListener('click', () => updateAppDistance(appDistance + .5));
+  cameraPermission.addEventListener('click', () => setCameraMode('rear'));
+  document.addEventListener('pointerdown', requestSensorPermission, { passive: true });
+  document.querySelectorAll('[data-calc]').forEach(button => button.addEventListener('click', () => calculatorInput(button.dataset.calc, button.dataset.value)));
 }
 
-function requestCamera(mode) {
-  return navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: mode === 'rear' ? 'environment' : 'user' } },
-    audio: false
-  });
-}
+addEventListener('resize', () => {
+  if (!camera) return;
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  cssRenderer.setSize(innerWidth, innerHeight);
+  rightCssRenderer.setSize(stereoEnabled ? innerWidth / 2 : innerWidth, innerHeight);
+});
 
-function trackTilt(event) {
-  hasOrientation = true;
-  sensorEuler.set(
-    THREE.MathUtils.degToRad(event.beta || 0),
-    THREE.MathUtils.degToRad(event.alpha || 0),
-    THREE.MathUtils.degToRad(-(event.gamma || 0)),
-    'YXZ'
-  );
-  sensorQuaternion.setFromEuler(sensorEuler);
-  sensorQuaternion.multiply(q0);
-  sensorQuaternion.multiply(q0.clone().setFromAxisAngle(zee, -THREE.MathUtils.degToRad(screen.orientation?.angle || 0)));
-  if (!initialSensorQuaternion || resetZeroMode) {
-    initialSensorQuaternion = sensorQuaternion.clone();
-    sensorStatus.textContent = 'ZERO LOCKED';
-  }
-  const relativeQuaternion = initialSensorQuaternion.clone().invert().multiply(sensorQuaternion);
-  camera.userData.targetQuaternion.copy(relativeQuaternion);
-  orientationLabel.textContent = `${innerWidth > innerHeight ? 'LANDSCAPE' : 'PORTRAIT'} / ZERO ${Math.round(event.alpha || 0)}°`;
-}
-
-document.querySelector('#menu-button').addEventListener('click', () => panel.classList.add('open'));
-document.querySelector('#close').addEventListener('click', () => panel.classList.remove('open'));
-const nestedTitle = document.querySelector('#nested-title');
-const nestedMeta = document.querySelector('#nested-meta');
-const youtubeTools = document.querySelector('#youtube-tools');
-const settingsTools = document.querySelector('#settings-tools');
-function openNestedPanel(title, meta) {
-  nestedTitle.textContent = title;
-  nestedMeta.textContent = meta;
-  youtubeTools.hidden = title !== 'YouTube';
-  settingsTools.hidden = title !== 'Settings';
-  document.querySelector('#nested-panel').classList.add('open');
-}
-document.querySelector('#youtube-button').addEventListener('click', () => openNestedPanel('YouTube', 'VIDEO SPACE'));
-document.querySelector('#settings-button').addEventListener('click', () => openNestedPanel('Settings', 'MY WORLD PREFERENCES'));
-document.querySelector('#nested-close').addEventListener('click', () => document.querySelector('#nested-panel').classList.remove('open'));
-document.querySelector('#youtube-entry').addEventListener('submit', (event) => {
-  event.preventDefault();
-  const url = document.querySelector('#youtube-url').value.trim();
-  const videoId = /^[A-Za-z0-9_-]{11}$/.test(url) ? url : (url.match(/[?&]v=([A-Za-z0-9_-]{11})/) || url.match(/youtu\.be\/([A-Za-z0-9_-]{11})/))?.[1];
-  if (!videoId && !/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(url)) {
-    feedback.textContent = 'PASTE A YOUTUBE LINK FIRST.';
-    return;
-  }
-  pendingVideoId = videoId;
-  wallChoices.hidden = false;
-  feedback.textContent = 'CHOOSE A WALL FOR THE VIDEO.';
-});
-document.querySelector('#smoothing-button').addEventListener('click', (event) => {
-  smoothingEnabled = !smoothingEnabled;
-  event.currentTarget.textContent = `Sensor smoothing: ${smoothingEnabled ? 'On' : 'Off'}`;
-});
-document.querySelector('#camera-button').addEventListener('click', async (event) => {
-  const nextMode = !cameraEnabled ? 'rear' : cameraMode === 'rear' ? 'front' : 'off';
-  if (nextMode === 'off') {
-    cameraEnabled = false;
-    video.srcObject?.getTracks().forEach(track => track.stop());
-    video.srcObject = null;
-    video.classList.remove('front-camera');
-    event.currentTarget.textContent = 'Camera: Off';
-    feedback.textContent = 'CAMERA OFF. WORLD LINES STILL ACTIVE.';
-    return;
-  }
-  cameraMode = nextMode;
-  cameraEnabled = true;
-  const stream = video.srcObject;
-  stream?.getTracks().forEach(track => track.stop());
-  try {
-    await startCamera(cameraMode);
-    event.currentTarget.textContent = `Camera: On / ${cameraMode === 'rear' ? 'Rear' : 'Front'}`;
-    feedback.textContent = `${cameraMode === 'rear' ? 'REAR' : 'FRONT'} CAMERA ACTIVE.`;
-  } catch (error) {
-    cameraEnabled = false;
-    cameraMode = 'off';
-    feedback.textContent = 'CAMERA SWITCH FAILED.';
-  }
-});
-document.querySelector('#lines-button').addEventListener('click', (event) => {
-  linesEnabled = !linesEnabled;
-  roomGroup.visible = linesEnabled;
-  event.currentTarget.textContent = `World lines: ${linesEnabled ? 'On' : 'Off'}`;
-  feedback.textContent = linesEnabled ? 'WORLD LINES ON.' : 'WORLD LINES OFF. MENU MARKINGS REMAIN.';
-});
-document.querySelector('#reset-zero-button').addEventListener('click', () => {
-  resetZeroMode = !resetZeroMode;
-  if (resetZeroMode) {
-    initialSensorQuaternion = null;
-    resetZeroButton.textContent = 'Reset zero point: On';
-    resetZeroButton.classList.add('active');
-    feedback.textContent = 'ZERO MODE ON. POINT PHONE FORWARD.';
-  } else {
-    resetZeroButton.textContent = 'Reset zero point: Off';
-    resetZeroButton.classList.remove('active');
-    feedback.textContent = 'ZERO MODE OFF.';
-  }
-});
-wallChoices.querySelectorAll('[data-wall]').forEach(button => {
-  button.addEventListener('click', () => {
-    if (!pendingVideoId) return;
-    const wall = button.dataset.wall;
-    activeVideoWall = wall;
-    youtubeFrame.src = `https://www.youtube.com/embed/${pendingVideoId}?autoplay=1&rel=0`;
-    if (videoWallTitle) videoWallTitle.textContent = `YouTube / ${wall} wall`;
-    videoWall.hidden = false;
-    document.querySelector('#nested-panel').classList.remove('open');
-    feedback.textContent = 'VIDEO PLACED IN YOUR WORLD.';
-  });
-});
-document.querySelector('#video-wall-close').addEventListener('click', () => {
-  youtubeFrame.src = '';
-  videoWall.hidden = true;
-});
-addEventListener('resize', () => { if (camera) { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); cssRenderer.setSize(innerWidth, innerHeight); } });
-setupSpace();
-enter();
-cameraPermission.addEventListener('click', enter);
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=16').catch(() => {});
+setupScene();
+setupInteractions();
+requestSensorPermission();
+setCameraMode('rear');
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=19').catch(() => {});

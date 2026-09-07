@@ -1,5 +1,5 @@
-const CACHE_NAME = 'my-3d-world-v16';
-const APP_SHELL = ['./', './index.html', './styles.css?v=6', './app.js?v=16', './manifest.json', './icon.svg'];
+const CACHE_NAME = 'my-3d-world-v20';
+const APP_SHELL = ['./', './index.html', './styles.css?v=20', './app.js?v=20', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));

@@ -3,67 +3,77 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#081017">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#071018">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=6">
-  <script type="importmap">
-    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js"}}
-  </script>
-  <title>My 3D World</title>
+  <link rel="stylesheet" href="styles.css?v=19">
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js"}}</script>
+  <title>Real 3D</title>
 </head>
 <body>
-  <video id="camera" autoplay playsinline muted aria-label="Front camera view"></video>
+  <video id="camera" autoplay playsinline muted aria-label="Camera passthrough"></video>
+  <video id="vr-camera" autoplay playsinline muted aria-hidden="true"></video>
   <div id="shade"></div>
   <div id="space" aria-hidden="true"></div>
-
-  <div class="hud">
-    <div class="brand">3D WORLD</div>
-    <div class="status"><strong id="sensor-status">SENSOR STANDBY</strong><br><span id="orientation">PORTRAIT / TURN PHONE</span><br><button class="camera-permission" id="camera-permission" type="button" hidden>ENABLE CAMERA</button></div>
-  </div>
-
+  <button id="camera-permission" class="permission-button" type="button" hidden data-gaze>Enable camera</button>
   <div class="gaze-cursor" id="gaze-cursor" aria-hidden="true"><span></span></div>
+  <div class="gaze-cursor gaze-cursor-right" id="gaze-cursor-right" aria-hidden="true"><span></span></div>
 
-  <main class="menu-node">
-    <button class="menu-button" id="menu-button" aria-label="Open spatial menu"></button>
-  </main>
+  <nav id="launcher" class="spatial-window launcher" aria-label="Launcher">
+    <button class="app-icon" data-app="settings" data-gaze type="button"><span class="settings-glyph" aria-hidden="true"></span>Settings</button>
+    <button class="app-icon" data-app="library" data-gaze type="button"><span>＋</span>Library</button>
+  </nav>
 
-  <section class="panel main-panel" id="panel" aria-label="Main menu">
-    <div class="panel-head"><div><div class="panel-title">My World</div><div class="panel-meta">MAIN MENU</div></div><button class="close" id="close" aria-label="Close menu">&times;</button></div>
-    <nav class="menu-actions" aria-label="Main menu options">
-      <button class="menu-action" id="youtube-button" type="button">YouTube</button>
-      <button class="menu-action" id="settings-button" type="button">Settings</button>
-    </nav>
-    <div class="saved" id="feedback" aria-live="polite"></div>
+  <section id="settings-app" class="spatial-window app-window" aria-label="Settings">
+    <header class="window-header"><span></span><div class="window-actions"><button class="window-move" data-move-app="settings" data-gaze type="button">Move</button><button class="window-close" data-close-app="settings" data-gaze type="button" aria-label="Close settings">×</button></div></header>
+    <div class="control-group"><div class="segmented"><button data-camera-mode="rear" data-gaze type="button">Rear</button><button data-camera-mode="front" data-gaze type="button">Front</button><button data-camera-mode="off" data-gaze type="button">Off</button></div></div>
+    <div class="control-group"><span class="range-label">App distance</span><div class="distance-stepper"><button id="app-distance-minus" data-gaze type="button" aria-label="Decrease app distance">−</button><output id="app-distance-value">2.0m</output><button id="app-distance-plus" data-gaze type="button" aria-label="Increase app distance">+</button></div></div>
+    <button class="wide-control" id="recenter-button" data-gaze type="button">Recenter origin <span>→</span></button>
+    <button class="wide-control" id="smoothing-button" data-gaze type="button">Sensor smoothing: ON <span>→</span></button>
+    <button class="wide-control" id="stereo-button" data-gaze type="button">VR mode: OFF <span>→</span></button>
   </section>
 
-  <section class="panel nested-panel" id="nested-panel" aria-label="Secondary menu">
-    <div class="panel-head"><div><div class="panel-title" id="nested-title">YouTube</div><div class="panel-meta" id="nested-meta">VIDEO SPACE</div></div><button class="close" id="nested-close" aria-label="Close secondary menu">&times;</button></div>
-    <div id="youtube-tools">
-      <div class="subtle-copy">Bring a video into your world.</div>
-      <form class="entry" id="youtube-entry"><input id="youtube-url" type="text" placeholder="YouTube link or 11-character ID" autocomplete="off"><button type="submit">Open</button></form>
-      <div class="wall-choices" id="wall-choices" hidden>
-        <div class="panel-meta">CHOOSE A WALL</div>
-        <button class="menu-action" data-wall="back" type="button">Back wall</button>
-        <button class="menu-action" data-wall="left" type="button">Left wall</button>
-        <button class="menu-action" data-wall="right" type="button">Right wall</button>
+  <section id="iframe-app" class="spatial-window app-window iframe-app" aria-label="Iframe">
+    <header class="window-header"><span></span><div class="window-actions"><button class="window-move" data-move-app="iframe" data-gaze type="button">Move</button><button class="window-close" data-close-app="iframe" data-gaze type="button" aria-label="Close iframe settings">×</button></div></header>
+    <form id="iframe-form" class="iframe-form">
+      <div class="iframe-input-wrap"><input id="iframe-url" data-gaze type="text" placeholder="Video link or YouTube ID" aria-label="Video link or YouTube ID" autocomplete="off" required><button id="iframe-keyboard-toggle" data-gaze type="button" aria-label="Open spatial keyboard">⌨</button></div>
+      <div id="iframe-keyboard" class="spatial-keyboard" hidden>
+        <div class="key-row"><button data-virtual-key="Q" data-gaze type="button">Q</button><button data-virtual-key="W" data-gaze type="button">W</button><button data-virtual-key="E" data-gaze type="button">E</button><button data-virtual-key="R" data-gaze type="button">R</button><button data-virtual-key="T" data-gaze type="button">T</button><button data-virtual-key="Y" data-gaze type="button">Y</button><button data-virtual-key="U" data-gaze type="button">U</button><button data-virtual-key="I" data-gaze type="button">I</button><button data-virtual-key="O" data-gaze type="button">O</button><button data-virtual-key="P" data-gaze type="button">P</button></div>
+        <div class="key-row"><button data-virtual-key="A" data-gaze type="button">A</button><button data-virtual-key="S" data-gaze type="button">S</button><button data-virtual-key="D" data-gaze type="button">D</button><button data-virtual-key="F" data-gaze type="button">F</button><button data-virtual-key="G" data-gaze type="button">G</button><button data-virtual-key="H" data-gaze type="button">H</button><button data-virtual-key="J" data-gaze type="button">J</button><button data-virtual-key="K" data-gaze type="button">K</button><button data-virtual-key="L" data-gaze type="button">L</button></div>
+        <div class="key-row"><button data-virtual-key="Z" data-gaze type="button">Z</button><button data-virtual-key="X" data-gaze type="button">X</button><button data-virtual-key="C" data-gaze type="button">C</button><button data-virtual-key="V" data-gaze type="button">V</button><button data-virtual-key="B" data-gaze type="button">B</button><button data-virtual-key="N" data-gaze type="button">N</button><button data-virtual-key="M" data-gaze type="button">M</button><button data-virtual-key="BACKSPACE" data-gaze type="button">⌫</button></div>
+        <div class="key-row"><button class="key-row-wide" data-virtual-key="SPACE" data-gaze type="button">Space</button><button data-virtual-key="CLOSE" data-gaze type="button">Done</button></div>
       </div>
-    </div>
-    <div id="settings-tools" hidden>
-      <button class="menu-action active" id="smoothing-button" type="button">Sensor smoothing: On</button>
-      <button class="menu-action active" id="camera-button" type="button">Camera: On / Rear</button>
-      <button class="menu-action active" id="lines-button" type="button">World lines: On</button>
-      <button class="menu-action" id="reset-zero-button" type="button">Reset zero point: Off</button>
+      <span class="range-label">Distance</span><div class="distance-stepper"><button id="iframe-distance-minus" data-gaze type="button" aria-label="Decrease video distance">−</button><output id="iframe-distance-value">2.0m</output><button id="iframe-distance-plus" data-gaze type="button" aria-label="Increase video distance">+</button></div>
+      <button class="wide-control iframe-open" data-gaze type="submit">Open video <span>→</span></button>
+    </form>
+  </section>
+
+  <section id="iframe-video" class="spatial-window iframe-video" aria-label="Embedded video">
+    <header class="window-header"><span></span><div class="window-actions"><button class="window-move" data-move-app="iframe-video" data-gaze type="button">Move</button><button class="window-close" data-close-app="iframe-video" data-gaze type="button" aria-label="Close embedded video">×</button></div></header>
+    <iframe id="iframe-player" title="Embedded video" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
+  </section>
+
+  <section id="library-app" class="spatial-window app-window library-window" aria-label="App Library">
+    <header class="window-header"><span></span><div class="window-actions"><button class="window-move" data-move-app="library" data-gaze type="button">Move</button><button class="window-close" data-close-app="library" data-gaze type="button" aria-label="Close app library">×</button></div></header>
+    <div class="library-grid">
+      <button class="library-icon iframe-icon" data-app="iframe" data-gaze type="button"><span>▣</span></button>
+      <button class="library-icon calculator-icon" data-app="calculator" data-gaze type="button"><span>＋−</span></button>
     </div>
   </section>
 
-  <section class="video-wall" id="video-wall" aria-label="YouTube video wall" hidden>
-    <iframe id="youtube-frame" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+  <section id="calculator-app" class="spatial-window app-window calculator-app" aria-label="Calculator">
+    <header class="window-header"><span></span><div class="window-actions"><button class="window-move" data-move-app="calculator" data-gaze type="button">Move</button><button class="window-close" data-close-app="calculator" data-gaze type="button" aria-label="Close calculator">×</button></div></header>
+    <output id="calculator-display" class="calculator-display" aria-live="polite">0</output>
+    <div class="calculator-grid">
+      <button data-calc="clear" data-gaze type="button">AC</button><button data-calc="backspace" data-gaze type="button">⌫</button><button data-calc="operator" data-value="/" data-gaze type="button">÷</button><button data-calc="operator" data-value="*" data-gaze type="button">×</button>
+      <button data-calc="digit" data-value="7" data-gaze type="button">7</button><button data-calc="digit" data-value="8" data-gaze type="button">8</button><button data-calc="digit" data-value="9" data-gaze type="button">9</button><button data-calc="operator" data-value="-" data-gaze type="button">−</button>
+      <button data-calc="digit" data-value="4" data-gaze type="button">4</button><button data-calc="digit" data-value="5" data-gaze type="button">5</button><button data-calc="digit" data-value="6" data-gaze type="button">6</button><button data-calc="operator" data-value="+" data-gaze type="button">+</button>
+      <button data-calc="digit" data-value="1" data-gaze type="button">1</button><button data-calc="digit" data-value="2" data-gaze type="button">2</button><button data-calc="digit" data-value="3" data-gaze type="button">3</button><button data-calc="equals" data-gaze type="button">=</button>
+      <button class="calculator-zero" data-calc="digit" data-value="0" data-gaze type="button">0</button><button data-calc="decimal" data-gaze type="button">.</button>
+    </div>
   </section>
-  <button class="video-close" id="video-wall-close" aria-label="Close video wall" hidden>&times;</button>
 
-  <script type="module" src="app.js?v=16"></script>
+  <script type="module" src="app.js?v=19"></script>
 </body>
 </html>
